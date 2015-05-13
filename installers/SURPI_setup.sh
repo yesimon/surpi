@@ -19,7 +19,7 @@
 # Copyright (C) 2014 Scot Federman - All Rights Reserved
 # Permission to copy and modify is granted under the BSD license
 # Last revised 6/6/2014
-
+set -e
 export DEBIAN_FRONTEND=noninteractive
 
 #Change below folders as desired in order to change installation location.
