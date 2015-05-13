@@ -187,10 +187,9 @@ sudo chmod u+s "$bin_folder/dropcache"
 ### install SNAP
 ##
 #
-
-curl -O "http://snap.cs.berkeley.edu/downloads/snap-0.15.4-linux.tar.gz"
-tar xvfz snap-0.15.4-linux.tar.gz
-sudo cp snap-0.15.4-linux/snap "$bin_folder/"
+# sudo apt-get install -y zlib1g-dev # For building from source
+curl -O "https://github.com/amplab/snap/releases/download/v1.0beta.18/snap-aligner"
+sudo cp snap-aligner "$bin_folder/snap"
 
 #
 ##
