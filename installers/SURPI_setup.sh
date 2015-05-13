@@ -41,7 +41,7 @@ CWD=$(pwd)
 
 # Install packages necessary for the SURPI pipeline.
 sudo -E apt-get update -y
-sudo -E apt-get install -y make csh htop python-dev gcc unzip g++ g++-4.6 cpanminus ghostscript blast2 python-matplotlib git pigz parallel ncbi-blast+
+sudo -E apt-get install -y make build-essential libexpat1-dev csh htop python-dev gcc unzip g++ g++-4.6 cpanminus ghostscript blast2 python-matplotlib git pigz parallel ncbi-blast+
 sudo -E apt-get upgrade -y
 
 #
@@ -253,7 +253,7 @@ cd $CWD
 ##
 #
 
-sudo apt-get -y install mummer
+sudo apt-get -y install mummer libexpat1-dev
 sudo cpanm DBI
 sudo cpanm Statistics::Descriptive
 sudo cpanm XML::Parser
