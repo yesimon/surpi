@@ -41,7 +41,7 @@ CWD=$(pwd)
 
 # Install packages necessary for the SURPI pipeline.
 sudo -E apt-get update -y
-sudo -E apt-get install -y make build-essential libexpat1-dev csh htop python-dev gcc unzip g++ g++-4.6 cpanminus ghostscript blast2 python-matplotlib git pigz parallel ncbi-blast+
+sudo -E apt-get install -y make build-essential libexpat1-dev csh htop python-dev gcc unzip g++ g++-4.6 cpanminus ghostscript blast2 python-matplotlib git pigz moreutils ncbi-blast+
 sudo -E apt-get upgrade -y
 
 #
