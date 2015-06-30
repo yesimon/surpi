@@ -18,10 +18,12 @@
 # Please see license file for details.
 
 scriptname=${0##*/}
+# source debug.sh
+source logging.sh
 
 if [ $# -lt 6 ]; then
-	echo "Usage: $scriptname <annotated file> <SNAP/RAP> <gi Y/N> <species Y/N> <genus Y/N> <family Y/N> "
-    exit
+  echo "Usage: $scriptname <annotated file> <SNAP/RAP> <gi Y/N> <species Y/N> <genus Y/N> <family Y/N> "
+  exit
 fi
 
 ###
@@ -35,101 +37,101 @@ family=$6
 
 ###substitute forward slash with @_ because forward slash in species name makes it ungreppable. using @_ because @ is used inside the contig barcode (ie. #@13 is barcode 13, contig generated)
 create_tab_delimited_table.pl -f $file_type $inputfile  |  sed 's/ /_/g' | sed 's/,/_/g' | sed 's/\//@_/g' > $inputfile.tempsorted
-echo -e "$(date)\t$scriptname\tdone creating $inputfile.tempsorted"
+log "done creating $inputfile.tempsorted"
 
 ###########GENERATE BARCODE LIST#####################
 sed 's/#/ /g'  $inputfile.tempsorted | sed 's/\// /g' | awk '{print$2}' | sed 's/^/#/g' | sed 's/[1-2]$//g' | sort | uniq > $inputfile.barcodes.int #makes a barcode list from the entire file #change $inputfile.tempsorted to $inputfile once no need for temp table
-echo -e "$(date)\t$scriptname\tcreated list of barcodes"
+log "created list of barcodes"
 
 sed '/N/d' $inputfile.barcodes.int > $inputfile.barcodes
 
 ######GENERATE gi LIST ##############
 if [ "$gi" != "N" ]
 then
-	sort -k2,2 -k2,2g $inputfile.tempsorted | sed 's/\t/,/g' | sort -u -t, -k 2,2 | sed 's/,/\t/g' | awk -F "\t" '{print$2,"\t"$3,"\t"$4,"\t"$5}' | sed '/^$/d' | sed '/^ /d' > $inputfile.gi.uniq.columntable
-	awk -F "\t" '{print$1}'  $inputfile.gi.uniq.columntable | sed '/^$/d' | sed '/^ /d' > $inputfile.gi.uniq.column
-	echo -e "$(date)\t$scriptname\tdone creating $inputfile.gi.uniq.column"
-	for f in `cat $inputfile.barcodes`
-		do
-			echo "bar$f" > bar$f.$inputfile.gi.output
-			echo -e "$(date)\t$scriptname\tparsing barcode $f "
-			grep "$f" $inputfile.tempsorted > bar.$f.$inputfile.tempsorted
-			for d in `cat $inputfile.gi.uniq.column`
-			do
-				grep -F -c -w "$d" bar.$f.$inputfile.tempsorted  >> bar$f.$inputfile.gi.output
-			done
-		done
-	echo -e "GI\tSpecies\tGenus\tFamily(@=contigbarcode)" > $inputfile.header
-	cat $inputfile.header $inputfile.gi.uniq.columntable > $inputfile.gi.counttable_temp
-	paste $inputfile.gi.counttable_temp bar*.$inputfile.gi.output > $inputfile.gi.counttable
-	sed -i 's/@_/ /g' $inputfile.gi.counttable
-	echo -e "$(date)\t$scriptname\tdone generating gi counttable"
+  sort -k2,2 -k2,2g $inputfile.tempsorted | sed 's/\t/,/g' | sort -u -t, -k 2,2 | sed 's/,/\t/g' | awk -F "\t" '{print$2,"\t"$3,"\t"$4,"\t"$5}' | sed '/^$/d' | sed '/^ /d' > $inputfile.gi.uniq.columntable
+  awk -F "\t" '{print$1}'  $inputfile.gi.uniq.columntable | sed '/^$/d' | sed '/^ /d' > $inputfile.gi.uniq.column
+  log "done creating $inputfile.gi.uniq.column"
+  for f in $(cat $inputfile.barcodes)
+  do
+    echo "bar$f" > bar$f.$inputfile.gi.output
+    log "parsing barcode $f "
+    grep "$f" $inputfile.tempsorted > bar.$f.$inputfile.tempsorted
+    for d in $(cat $inputfile.gi.uniq.column)
+    do
+      grep -F -c -w "$d" bar.$f.$inputfile.tempsorted  >> bar$f.$inputfile.gi.output
+    done
+  done
+  echo -e "GI\tSpecies\tGenus\tFamily(@=contigbarcode)" > $inputfile.header
+  cat $inputfile.header $inputfile.gi.uniq.columntable > $inputfile.gi.counttable_temp
+  paste $inputfile.gi.counttable_temp bar*.$inputfile.gi.output > $inputfile.gi.counttable
+  sed -i 's/@_/ /g' $inputfile.gi.counttable
+  log "done generating gi counttable"
 fi
 
 ######GENERATE species LIST ##############
 if [ "$species" != "N" ]
 then
-	sort -k3,3 -k3,3g $inputfile.tempsorted | sed 's/\t/,/g' | sort -u -t, -k 3,3 | sed 's/,/\t/g' | awk -F "\t" '{print$3,"\t"$4,"\t"$5}' | sed '/^$/d' | sed '/^ /d' > $inputfile.species.uniq.columntable
-	awk -F "\t" '{print$1}'  $inputfile.species.uniq.columntable | sed '/^$/d' | sed '/^ /d' > $inputfile.species.uniq.column
-	echo -e "$(date)\t$scriptname\tdone creating $inputfile.species.uniq.column"
-	for f in `cat $inputfile.barcodes`
-	do
-		echo "bar$f" > bar$f.$inputfile.species.output
-		echo -e "$(date)\t$scriptname\tparsing barcode $f "
-		grep "$f" $inputfile.tempsorted > bar.$f.$inputfile.tempsorted
-		for d in `cat $inputfile.species.uniq.column`
-		do
-			grep -F -c -w "$d" bar.$f.$inputfile.tempsorted  >> bar$f.$inputfile.species.output
-		done
-	done
-	echo -e "Species\tGenus\tFamily(@=contigbarcode)" > $inputfile.header
-	cat $inputfile.header $inputfile.species.uniq.columntable > $inputfile.species.counttable_temp
-	paste $inputfile.species.counttable_temp bar*.$inputfile.species.output > $inputfile.species.counttable
-	sed -i 's/@_/ /g' $inputfile.species.counttable
-	echo -e "$(date)\t$scriptname\tdone generating species counttable"
+  sort -k3,3 -k3,3g $inputfile.tempsorted | sed 's/\t/,/g' | sort -u -t, -k 3,3 | sed 's/,/\t/g' | awk -F "\t" '{print$3,"\t"$4,"\t"$5}' | sed '/^$/d' | sed '/^ /d' > $inputfile.species.uniq.columntable
+  awk -F "\t" '{print$1}'  $inputfile.species.uniq.columntable | sed '/^$/d' | sed '/^ /d' > $inputfile.species.uniq.column
+  log "done creating $inputfile.species.uniq.column"
+  for f in $(cat $inputfile.barcodes)
+  do
+    echo "bar$f" > bar$f.$inputfile.species.output
+    log "parsing barcode $f "
+    grep "$f" $inputfile.tempsorted > bar.$f.$inputfile.tempsorted
+    for d in $(cat $inputfile.species.uniq.column)
+    do
+      grep -F -c -w "$d" bar.$f.$inputfile.tempsorted  >> bar$f.$inputfile.species.output
+    done
+  done
+  echo -e "Species\tGenus\tFamily(@=contigbarcode)" > $inputfile.header
+  cat $inputfile.header $inputfile.species.uniq.columntable > $inputfile.species.counttable_temp
+  paste $inputfile.species.counttable_temp bar*.$inputfile.species.output > $inputfile.species.counttable
+  sed -i 's/@_/ /g' $inputfile.species.counttable
+  log "done generating species counttable"
 fi
 ######GENERATE genus LIST ##############
 if [ "$genus" != "N" ]
 then
-	sort -k4,4 -k4,4g $inputfile.tempsorted | sed 's/\t/,/g' | sort -u -t, -k 4,4 | sed 's/,/\t/g' | awk -F "\t" '{print$4,"\t"$5}' | sed '/^$/d' | sed '/^ /d' > $inputfile.genus.uniq.columntable
-	awk -F "\t" '{print$1}'  $inputfile.genus.uniq.columntable | sed '/^$/d' | sed '/^ /d' > $inputfile.genus.uniq.column
-	echo -e "$(date)\t$scriptname\tdone creating $inputfile.genus.uniq.column"
-	for f in `cat $inputfile.barcodes`
-	do
-		echo "bar$f" > bar$f.$inputfile.genus.output
-		echo -e "$(date)\t$scriptname\tparsing barcode $f"
-		grep "$f" $inputfile.tempsorted > bar.$f.$inputfile.tempsorted
-		for d in `cat $inputfile.genus.uniq.column`
-		do
-			grep -F -c -w "$d" bar.$f.$inputfile.tempsorted  >> bar$f.$inputfile.genus.output
-		done
-	done
-	echo -e "Genus\tFamily(@=contigbarcode)" > $inputfile.header
-	cat $inputfile.header $inputfile.genus.uniq.columntable > $inputfile.genus.counttable_temp
-	paste $inputfile.genus.counttable_temp bar*.$inputfile.genus.output > $inputfile.genus.counttable
-	sed -i 's/@_/ /g' $inputfile.genus.counttable
-	echo -e "$(date)\t$scriptname\tdone generating genus counttable"
+  sort -k4,4 -k4,4g $inputfile.tempsorted | sed 's/\t/,/g' | sort -u -t, -k 4,4 | sed 's/,/\t/g' | awk -F "\t" '{print$4,"\t"$5}' | sed '/^$/d' | sed '/^ /d' > $inputfile.genus.uniq.columntable
+  awk -F "\t" '{print$1}'  $inputfile.genus.uniq.columntable | sed '/^$/d' | sed '/^ /d' > $inputfile.genus.uniq.column
+  log "done creating $inputfile.genus.uniq.column"
+  for f in $(cat $inputfile.barcodes)
+  do
+    echo "bar$f" > bar$f.$inputfile.genus.output
+    log "parsing barcode $f"
+    grep "$f" $inputfile.tempsorted > bar.$f.$inputfile.tempsorted
+    for d in $(cat $inputfile.genus.uniq.column)
+    do
+      grep -F -c -w "$d" bar.$f.$inputfile.tempsorted  >> bar$f.$inputfile.genus.output
+    done
+  done
+  echo -e "Genus\tFamily(@=contigbarcode)" > $inputfile.header
+  cat $inputfile.header $inputfile.genus.uniq.columntable > $inputfile.genus.counttable_temp
+  paste $inputfile.genus.counttable_temp bar*.$inputfile.genus.output > $inputfile.genus.counttable
+  sed -i 's/@_/ /g' $inputfile.genus.counttable
+  log "done generating genus counttable"
 fi
 ######GENERATE family LIST ##############
 if [ "$family" != "N" ]
 then
-	sort -k5,5 -k5,5g $inputfile.tempsorted | sed 's/\t/,/g' | sort -u -t, -k 5,5 | sed 's/,/\t/g' | awk -F "\t" '{print$5}' | sed '/^$/d' | sed '/^ /d' > $inputfile.family.uniq.column
-	echo -e "$(date)\t$scriptname\tdone creating $inputfile.family.uniq.column"
-	for f in `cat $inputfile.barcodes`
-	do
-		echo "bar$f" > bar$f.$inputfile.family.output
-		echo -e "$(date)\t$scriptname\tparsing barcode $f"
-		grep "$f" $inputfile.tempsorted > bar.$f.$inputfile.tempsorted
-		for d in `cat $inputfile.family.uniq.column`
-		do
-			grep -F -c -w "$d" bar.$f.$inputfile.tempsorted  >> bar$f.$inputfile.family.output
-		done
-	done
-	echo "Family(@=contigbarcode)" > $inputfile.header
-	cat $inputfile.header $inputfile.family.uniq.column > $inputfile.family.counttable_temp
-	paste $inputfile.family.counttable_temp bar*.$inputfile.family.output > $inputfile.family.counttable
-	sed -i 's/@_/ /g' $inputfile.family.counttable
-	echo -e "$(date)\t$scriptname\tdone generating family counttable"
+  sort -k5,5 -k5,5g $inputfile.tempsorted | sed 's/\t/,/g' | sort -u -t, -k 5,5 | sed 's/,/\t/g' | awk -F "\t" '{print$5}' | sed '/^$/d' | sed '/^ /d' > $inputfile.family.uniq.column
+  log "done creating $inputfile.family.uniq.column"
+  for f in $(cat $inputfile.barcodes)
+  do
+    echo "bar$f" > bar$f.$inputfile.family.output
+    log "parsing barcode $f"
+    grep "$f" $inputfile.tempsorted > bar.$f.$inputfile.tempsorted
+    for d in $(cat $inputfile.family.uniq.column)
+    do
+      grep -F -c -w "$d" bar.$f.$inputfile.tempsorted  >> bar$f.$inputfile.family.output
+    done
+  done
+  echo "Family(@=contigbarcode)" > $inputfile.header
+  cat $inputfile.header $inputfile.family.uniq.column > $inputfile.family.counttable_temp
+  paste $inputfile.family.counttable_temp bar*.$inputfile.family.output > $inputfile.family.counttable
+  sed -i 's/@_/ /g' $inputfile.family.counttable
+  log "done generating family counttable"
 fi
 
 #########CLEANUP###############

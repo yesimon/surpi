@@ -53,7 +53,7 @@ counter=0
 
 for snap_index_basename in $(ls -1v "$SNAP_NT_index_directory") ; do
 	#nopathsnap_index=${snap_index##*/} # remove the path to file
-  snap_index = "$SNAP_NT_index_directory/$snap_index_basename"
+  snap_index="$SNAP_NT_index_directory/$snap_index_basename"
 	log "Found $snap_index_basename ... processing ..."
 	START2=$(date +%s)
 
@@ -71,7 +71,6 @@ for snap_index_basename in $(ls -1v "$SNAP_NT_index_directory") ; do
 
 	cat $basef.snap.log >> $basef.snapNT.log
 	cat $basef.time.log >> $basef.timeNT.log
-
 
 	compare_sam.py $basef.tmp.sam $basef.prev.sam
 	cat $basef.prev.sam | egrep -v "^@" | awk '{print "@"$1"\n"$10"\n""+"$1"\n"$11}' > $basef.tmp.fastq

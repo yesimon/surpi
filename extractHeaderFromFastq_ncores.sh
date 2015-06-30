@@ -13,6 +13,8 @@
 # Please see license file for details.
 
 scriptname=${0##*/}
+source debug.sh
+source logging.sh
 
 if [ $# -lt 4 ]
 then
