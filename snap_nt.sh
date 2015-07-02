@@ -45,14 +45,13 @@ cleanup() {
   rm -f $basef.tmp.sam || true
   rm -f $basef.tmp2.sam || true
   rm -f $basef.NT.sam || true
-  rm $basef.snapNT.log || true
-  rm $basef.timeNT.log || true
+  rm -f $basef.snapNT.log || true
+  rm -f $basef.timeNT.log || true
 }
 cleanup
 counter=0
 
 for snap_index_basename in $(ls -1v "$SNAP_NT_index_directory") ; do
-	#nopathsnap_index=${snap_index##*/} # remove the path to file
   snap_index="$SNAP_NT_index_directory/$snap_index_basename"
 	log "Found $snap_index_basename ... processing ..."
 	START2=$(date +%s)
@@ -60,13 +59,13 @@ for snap_index_basename in $(ls -1v "$SNAP_NT_index_directory") ; do
 	if [[ $counter -eq 0 ]]
 	then
 		#running first SNAP chunk
-		/usr/bin/time -o $basef.time.log $snap single $snap_index $basef.fastq -o $basef.$nopathsnap_index.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.snap.log
-    ln --symbolic --force $basef.$nopathsnap_index.sam $basef.tmp.sam
+		/usr/bin/time -o $basef.time.log $snap single $snap_index $basef.fastq -o $basef.$snap_index_basename.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.snap.log
+    ln --symbolic --force $basef.$snap_index_basename.sam $basef.tmp.sam
 # 		cp $basef.tmp.sam temp.sam
 	else
 		#running 2nd SNAP chunk through last SNAP chunk
-		/usr/bin/time -o $basef.time.log $snap single $snap_index $basef.tmp.fastq -o $basef.$nopathsnap_index.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.snap.log
-    ln --symbolic --force $basef.$nopathsnap_index.sam $basef.tmp.sam
+		/usr/bin/time -o $basef.time.log $snap single $snap_index $basef.tmp.fastq -o $basef.$snap_index_basename.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.snap.log
+    ln --symbolic --force $basef.$snap_index_basename.sam $basef.tmp.sam
 	fi
 
 	cat $basef.snap.log >> $basef.snapNT.log
@@ -90,7 +89,7 @@ update_sam.py $basef.prev.sam $basef.NT.sam
 rm -f $basef.tmp.sam
 rm -f $basef.tmp.fastq
 rm -f $basef.prev.sam
-rm -f $basef.$nopathsnap_index.*
+rm -f $basef.$snap_index_basename.*
 
 END1=$(date +%s)
 log "Done with SNAP_NT"

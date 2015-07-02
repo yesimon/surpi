@@ -1012,7 +1012,7 @@ then
         log "Using cached rapsearch result: $rapsearch_output_file"
       else
         log "Parameters: rapsearch -q $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta -d $RAPSearch_NR_db -o "$rapsearch_output_file" -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a T"
-        rapsearch -q $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta -d $RAPSearch_NR_db -o "$rapsearch_output_file"-z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a T
+        rapsearch -q $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta -d $RAPSearch_NR_db -o "$rapsearch_output_file" -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a T
         log "rapsearch to nr done"
       fi
       sed -i '/^#/d' $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.m8
