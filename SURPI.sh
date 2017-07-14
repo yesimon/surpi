@@ -22,8 +22,29 @@ endColor='\e[0m'
 
 host=$(hostname)
 scriptname=${0##*/}
-source debug.sh
-source logging.sh
+
+# way to get the absolute path to this script that should
+# work regardless of whether or not this script has been sourced
+# Find original directory of bash script, resovling symlinks
+# http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in/246128#246128
+function absolute_path() {
+    local SOURCE="$1"
+    while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            SOURCE="$(readlink "$SOURCE")"
+        else
+            SOURCE="$(readlink -f "$SOURCE")"
+        fi
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+    done
+    echo "$SOURCE"
+}
+SCRIPT_PATH="$(absolute_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname $SCRIPT_PATH)"
+
+source "$SCRIPT_DIR/debug.sh"
+source "$SCRIPT_DIR/logging.sh"
 
 while getopts "$optspec" option; do
   case "${option}" in
@@ -682,6 +703,10 @@ fi
 
 echo "-----------------------------------------------------------------------------------------"
 
+if grep -qs verify_fastq "$basef.checkpoint"; then
+  verify_fastq=1
+fi
+if [[ "$verify_fastq" != 1 ]]; then
 if [ "$VERIFY_FASTQ" = 1 ]
 then
   fastQValidator --file $FASTQ_file --printBaseComp --avgQual --disableSeqIDCheck > quality.$basef.log
@@ -693,6 +718,7 @@ then
     echo -e "${red}You can bypass the quality check by not using the -v switch.${endColor}"
     exit 65
   fi
+  echo "verify_fastq" >> "$basef.checkpoint"
 elif [ "$VERIFY_FASTQ" = 2 ]
 then
   fastQValidator --file $FASTQ_file --printBaseComp --avgQual > quality.$basef.log
@@ -704,9 +730,12 @@ then
     echo -e "${red}You can bypass the quality check by not using the -v switch.${endColor}"
     exit 65
   fi
+  echo "verify_fastq" >> "$basef.checkpoint"
 elif [ "$VERIFY_FASTQ" = 3 ]
 then
   fastQValidator --file $FASTQ_file --printBaseComp --avgQual > quality.$basef.log
+  echo "verify_fastq" >> "$basef.checkpoint"
+fi
 fi
 if [[ $VERIFICATION -eq 1 ]] #stop pipeline if using verification mode
 then
@@ -740,7 +769,7 @@ then
   log "Starting: preprocessing using $cores cores "
   START_PREPROC=$(date +%s)
   log "Parameters: preprocess_ncores.sh $basef.fastq $quality N $length_cutoff $cores Y N $adapter_set $start_nt $crop_length $temporary_files_directory >& $basef.preprocess.log"
-  preprocess_ncores.sh $basef.fastq $quality N $length_cutoff $cores N $adapter_set $start_nt $crop_length $temporary_files_directory $quality_cutoff >& $basef.preprocess.log
+  "$SCRIPT_DIR/preprocess_ncores.sh" $basef.fastq $quality N $length_cutoff $cores N $adapter_set $start_nt $crop_length $temporary_files_directory $quality_cutoff >& $basef.preprocess.log
   log "Done: preprocessing "
   END_PREPROC=$(date +%s)
   diff_PREPROC=$(( END_PREPROC - START_PREPROC ))
@@ -777,16 +806,6 @@ then
   START_SUBTRACTION=$(date +%s)
   for SNAP_subtraction_db in $SNAP_subtraction_folder/*; do
     SUBTRACTION_COUNTER=$[$SUBTRACTION_COUNTER +1]
-    # check if SNAP db is cached in RAM, use optimal parameters depending on result
-    #SNAP_db_cached=$(vmtouch -m500G -f "$SNAP_subtraction_db" | grep 'Resident Pages' | awk '{print $5}')
-    #if [[ "$SNAP_db_cached" == "100%" ]]
-    #then
-      #log "SNAP database is cached ($SNAP_db_cached)."
-      #SNAP_cache_option=" -map "
-    #else
-      #log "SNAP database is not cached ($SNAP_db_cached)."
-      #SNAP_cache_option=" -pre -map "
-    #fi
     log "Parameters: snap single $SNAP_subtraction_db $file_to_subtract -o -sam $subtracted_output_file.$SUBTRACTION_COUNTER.sam -t $cores -x -f -h 250 -d ${d_human} -n 25 -F u $SNAP_cache_option"
     START_SUBTRACTION_STEP=$(date +%s)
     snap single "$SNAP_subtraction_db" "$file_to_subtract" -o -sam "$subtracted_output_file.$SUBTRACTION_COUNTER.sam" -t $cores -x -f -h 250 -d ${d_human} -n 25 -F u $SNAP_cache_option
@@ -823,7 +842,7 @@ then
       if [ $snap_integrator = "inline" ]
       then
         log "Parameters: snap_nt.sh $basef_h.human.snap.unmatched.fastq ${SNAP_COMPREHENSIVE_db_dir} $cores $d_NT_alignment $snap"
-        snap_nt.sh "$basef_h.human.snap.unmatched.fastq" "${SNAP_COMPREHENSIVE_db_dir}" "$cores" "$d_NT_alignment" "$snap"
+        "$SCRIPT_DIR/snap_nt.sh" "$basef_h.human.snap.unmatched.fastq" "${SNAP_COMPREHENSIVE_db_dir}" "$cores" "$d_NT_alignment" "$snap"
       elif [ $snap_integrator = "end" ]
       then
         if [ "$snap_nt_procedure" = "AWS_master_slave" ]
@@ -839,18 +858,18 @@ then
           done
           echo
           log "Parameters: snap_on_slave.sh $basef_h.human.snap.unmatched.fastq $pemkey $file_with_slave_ips $incoming_dir ${basef}.NT.snap.sam $d_NT_alignment"
-          snap_on_slave.sh "$basef_h.human.snap.unmatched.fastq" "$pemkey" "$file_with_slave_ips" "$incoming_dir" "${basef}.NT.snap.sam" "$d_human"> "$basef.AWS.log" 2>&1
+          "$SCRIPT_DIR/snap_on_slave.sh" "$basef_h.human.snap.unmatched.fastq" "$pemkey" "$file_with_slave_ips" "$incoming_dir" "${basef}.NT.snap.sam" "$d_human"> "$basef.AWS.log" 2>&1
 
         elif [ "$snap_nt_procedure" = "solo" ]
         then
           log "Parameters: snap_nt_combine.sh $basef_h.human.snap.unmatched.fastq ${SNAP_COMPREHENSIVE_db_dir} $cores $d_NT_alignment $num_simultaneous_SNAP_runs"
-          snap_nt_combine.sh "$basef_h.human.snap.unmatched.fastq" "${SNAP_COMPREHENSIVE_db_dir}" "$cores" "$d_NT_alignment" "$num_simultaneous_SNAP_runs"
+          "$SCRIPT_DIR/snap_nt_combine.sh" "$basef_h.human.snap.unmatched.fastq" "${SNAP_COMPREHENSIVE_db_dir}" "$cores" "$d_NT_alignment" "$num_simultaneous_SNAP_runs"
         fi
       fi
     elif [ $run_mode = "Fast" ]
     then
       log "Parameters: snap_nt.sh $basef_h.human.snap.unmatched.fastq ${SNAP_FAST_db_dir} $cores $d_NT_alignment $snap"
-      snap_nt.sh "$basef_h.human.snap.unmatched.fastq" "${SNAP_FAST_db_dir}" "$cores" "$d_NT_alignment" "$snap"
+      "$SCRIPT_DIR/snap_nt.sh" "$basef_h.human.snap.unmatched.fastq" "${SNAP_FAST_db_dir}" "$cores" "$d_NT_alignment" "$snap"
     fi
 
     log "Done: SNAP to NT"
@@ -872,7 +891,7 @@ then
     ## convert to FASTQ and retrieve full-length sequences
     log "convert to FASTQ and retrieve full-length sequences for SNAP NT matched hits"
     log "Parameters: extractHeaderFromFastq_ncores.sh $cores $basef.cutadapt.fastq $basef.NT.snap.matched.sam $basef.NT.snap.matched.fulllength.fastq $basef.NT.snap.unmatched.sam $basef.NT.snap.unmatched.fulllength.fastq"
-    extractHeaderFromFastq_ncores.sh "$cores" "$basef.cutadapt.fastq" "$basef.NT.snap.matched.sam" "$basef.NT.snap.matched.fulllength.fastq" "$basef.NT.snap.unmatched.sam" "$basef.NT.snap.unmatched.fulllength.fastq"   #SNN140507
+    "$SCRIPT_DIR/extractHeaderFromFastq_ncores.sh" "$cores" "$basef.cutadapt.fastq" "$basef.NT.snap.matched.sam" "$basef.NT.snap.matched.fulllength.fastq" "$basef.NT.snap.unmatched.sam" "$basef.NT.snap.unmatched.fulllength.fastq"   #SNN140507
     sort -k1,1 "$basef.NT.snap.matched.sam"  > "$basef.NT.snap.matched.sorted.sam"
     cut -f1-9 "$basef.NT.snap.matched.sorted.sam" > "$basef.NT.snap.matched.sorted.sam.tmp1"
     cut -f12- "$basef.NT.snap.matched.sorted.sam" > "$basef.NT.snap.matched.sorted.sam.tmp2" #SNN140507 -f11 -> -f12
@@ -881,7 +900,7 @@ then
     ###retrieve taxonomy matched to NT ###
     log "taxonomy retrieval for $basef.NT.snap.matched.fulllength.sam"
     log "Parameters: taxonomy_lookup.pl $basef.NT.snap.matched.fulllength.sam sam nucl $cores $taxonomy_db_directory"
-    taxonomy_lookup.pl "$basef.NT.snap.matched.fulllength.sam" sam nucl $cores $taxonomy_db_directory
+    "$SCRIPT_DIR/taxonomy_lookup.pl" "$basef.NT.snap.matched.fulllength.sam" sam nucl $cores $taxonomy_db_directory
     sort -k 13.7n "$basef.NT.snap.matched.fulllength.all.annotated" > "$basef.NT.snap.matched.fulllength.all.annotated.sorted" # sam format is no longer disturbed
     rm -f  "$basef.NT.snap.matched.fulllength.gi" "$basef.NT.snap.matched.fullength.gi.taxonomy"
   fi

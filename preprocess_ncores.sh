@@ -13,7 +13,26 @@
 # Please see license file for details.
 
 scriptname=${0##*/}
-source logging.sh
+# way to get the absolute path to this script that should
+# work regardless of whether or not this script has been sourced
+# Find original directory of bash script, resovling symlinks
+# http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in/246128#246128
+function absolute_path() {
+    local SOURCE="$1"
+    while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            SOURCE="$(readlink "$SOURCE")"
+        else
+            SOURCE="$(readlink -f "$SOURCE")"
+        fi
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+    done
+    echo "$SOURCE"
+}
+SCRIPT_PATH="$(absolute_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname $SCRIPT_PATH)"
+source "$SCRIPT_DIR/logging.sh"
 
 if [ $# != 11 ]; then
 	echo "Usage: $scriptname <R1 FASTQ file> <S/I quality> <Y/N uniq> <length cutoff; 0 for no length cutoff> <# of cores> <free cache memory cutoff in GB> <Y/N keep short reads> <adapter_set> <start_nt> <crop_length> <temporary_files_directory> <quality_cutoff>"
@@ -66,7 +85,7 @@ log "Running preprocess script for each chunk..."
 for f in x??
 do
 	mv $f $f.fastq
-	log "preprocess.sh $f.fastq $quality N $length_cutoff $keep_short_reads $adapter_set $start_nt $crop_length $temporary_files_directory >& $f.preprocess.log &"
+	log "preprocess.sh $f.fastq $quality N $length_cutoff $keep_short_reads $adapter_set $start_nt $crop_length $temporary_files_directory $quality_cutoff >& $f.preprocess.log"
 	preprocess.sh $f.fastq $quality N $length_cutoff $keep_short_reads $adapter_set $start_nt $crop_length $temporary_files_directory $quality_cutoff >& $f.preprocess.log &
 done
 

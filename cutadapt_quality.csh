@@ -4,7 +4,7 @@
 #
 #	runs cutadapt to remove primer sequences from Illumina files
 #	also accepts a quality argument for Illumina / Sanger quality
-#	user specifies length cutoff
+##	user specifies length cutoff
 #	user specifies whether short reads less than length cutoff are kept; if so, they are converted to size=1
 #
 #	Chiu Laboratory
@@ -19,7 +19,6 @@
 # Copyright (C) 2014 Charles Chiu - All Rights Reserved
 # SURPI has been released under a modified BSD license.
 # Please see license file for details.
-
 if ($#argv != 7) then
 	echo "Usage: cutadapt_quality.csh <input FASTQ file> <quality S/I> <length cutoff> <keep short reads Y/N> <adapter_set> <temporary_files_directory> <quality cutoff>"
 	exit(1)

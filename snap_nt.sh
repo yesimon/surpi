@@ -10,9 +10,29 @@
 # Copyright (C) 2014 Charles Chiu - All Rights Reserved
 # SURPI has been released under a modified BSD license.
 # Please see license file for details.
+set -eo pipefail
 scriptname=${0##*/}
-source debug.sh
-source logging.sh
+# way to get the absolute path to this script that should
+# work regardless of whether or not this script has been sourced
+# Find original directory of bash script, resovling symlinks
+# http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in/246128#246128
+function absolute_path() {
+    local SOURCE="$1"
+    while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            SOURCE="$(readlink "$SOURCE")"
+        else
+            SOURCE="$(readlink -f "$SOURCE")"
+        fi
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+    done
+    echo "$SOURCE"
+}
+SCRIPT_PATH="$(absolute_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname $SCRIPT_PATH)"
+source "$SCRIPT_DIR/debug.sh"
+source "$SCRIPT_DIR/logging.sh"
 
 expected_args=5
 if [ $# -lt $expected_args ]
@@ -51,6 +71,8 @@ cleanup() {
 cleanup
 counter=0
 
+: > $basef.snapNT.log
+: > $basef.timeNT.log
 for snap_index_basename in $(ls -1v "$SNAP_NT_index_directory") ; do
   snap_index="$SNAP_NT_index_directory/$snap_index_basename"
 	log "Found $snap_index_basename ... processing ..."
@@ -59,13 +81,15 @@ for snap_index_basename in $(ls -1v "$SNAP_NT_index_directory") ; do
 	if [[ $counter -eq 0 ]]
 	then
 		#running first SNAP chunk
+		echo "$snap single $snap_index $basef.fastq -o $basef.$snap_index_basename.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25"
 		/usr/bin/time -o $basef.time.log $snap single $snap_index $basef.fastq -o $basef.$snap_index_basename.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.snap.log
-    ln --symbolic --force $basef.$snap_index_basename.sam $basef.tmp.sam
+	    ln --symbolic --force $basef.$snap_index_basename.sam $basef.tmp.sam
 # 		cp $basef.tmp.sam temp.sam
 	else
 		#running 2nd SNAP chunk through last SNAP chunk
+		echo "$snap single $snap_index $basef.tmp.fastq -o $basef.$snap_index_basename.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25"
 		/usr/bin/time -o $basef.time.log $snap single $snap_index $basef.tmp.fastq -o $basef.$snap_index_basename.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.snap.log
-    ln --symbolic --force $basef.$snap_index_basename.sam $basef.tmp.sam
+	    ln --symbolic --force $basef.$snap_index_basename.sam $basef.tmp.sam
 	fi
 
 	cat $basef.snap.log >> $basef.snapNT.log

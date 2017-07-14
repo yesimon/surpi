@@ -17,8 +17,28 @@
 # Please see license file for details.
 
 scriptname=${0##*/}
-source debug.sh
-source logging.sh
+# way to get the absolute path to this script that should
+# work regardless of whether or not this script has been sourced
+# Find original directory of bash script, resovling symlinks
+# http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in/246128#246128
+function absolute_path() {
+    local SOURCE="$1"
+    while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            SOURCE="$(readlink "$SOURCE")"
+        else
+            SOURCE="$(readlink -f "$SOURCE")"
+        fi
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+    done
+    echo "$SOURCE"
+}
+SCRIPT_PATH="$(absolute_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname $SCRIPT_PATH)"
+
+source "$SCRIPT_DIR/debug.sh"
+source "$SCRIPT_DIR/logging.sh"
 
 if [ $# != 10 ]; then
 	echo "Usage: $scriptname <R1 FASTQ file> <S/I quality> <Y/N uniq> <length_cutoff; 0 for no length_cutoff> <Y/N keep short reads> <adapter_set> <start_nt> <crop_length> <temporary_files_directory> <quality_cutoff>"
@@ -60,7 +80,6 @@ nopathf=${1##*/}
 basef=${nopathf%.fastq}
 
 #################### START OF PREPROCESSING, READ1 #########################
-
 # run cutadapt, Read1
 log "********** running cutadapt, Read1 **********"
 if [ $s == "SPACE" ]
@@ -68,12 +87,14 @@ then
 	sed "s/\([@HWI|@M00135|@SRR][^ ]*\) \(.\):.:0:\(.*\)/\1#\3\/\2/g" $inputfile > $basef.modheader.fastq
 	# modified to take into account anything in there [N or Y]
 	START1=$(date +%s)
-	cutadapt_quality.csh $basef.modheader.fastq $quality $length_cutoff $keep_short_reads $adapter_set $temporary_files_directory $quality_cutoff
+	log "cutadapt_quality.csh $basef.modheader.fastq $quality $length_cutoff $keep_short_reads $adapter_set $temporary_files_directory $quality_cutoff"
+	"$SCRIPT_DIR/cutadapt_quality.csh" $basef.modheader.fastq $quality $length_cutoff $keep_short_reads $adapter_set $temporary_files_directory $quality_cutoff
 	mv $basef.modheader.cutadapt.fastq $basef.cutadapt.fastq
 	rm -f $basef.modheader.fastq
 else
 	START1=$(date +%s)
-	cutadapt_quality.csh $inputfile $quality $length_cutoff $keep_short_reads $adapter_set $temporary_files_directory $quality_cutoff
+	log "cutadapt_quality.csh $inputfile $quality $length_cutoff $keep_short_reads $adapter_set $temporary_files_directory $quality_cutoff"
+	"$SCRIPT_DIR/cutadapt_quality.csh" $inputfile $quality $length_cutoff $keep_short_reads $adapter_set $temporary_files_directory $quality_cutoff
 fi
 
 END1=$(date +%s)
@@ -105,11 +126,14 @@ START1=$(date +%s)
 if [ $run_uniq == "Y" ]
 then
 	log "We will be using $crop_length as the length of the cropped read"
-	crop_reads.csh $basef.cutadapt.uniq.fastq $start_nt $crop_length > $basef.cutadapt.uniq.cropped.fastq
+	log "crop_reads.csh $basef.cutadapt.uniq.fastq $start_nt $crop_length > $basef.cutadapt.uniq.cropped.fastq"
+	"$SCRIPT_DIR/crop_reads.csh" $basef.cutadapt.uniq.fastq $start_nt $crop_length | paste - - - - | awk 'BEGIN {FS="\t"} $2 != "" {print}' | tr '\t' '\n' > $basef.cutadapt.uniq.cropped.fastq
 else
 	log "We will be using $crop_length as the length of the cropped read"
-	crop_reads.csh $basef.cutadapt.fastq $start_nt $crop_length > $basef.cutadapt.cropped.fastq
+	log "crop_reads.csh $basef.cutadapt.fastq $start_nt $crop_length > $basef.cutadapt.cropped_raw.fastq"
+	"$SCRIPT_DIR/crop_reads.csh" $basef.cutadapt.fastq $start_nt $crop_length | paste - - - - | awk 'BEGIN {FS="\t"} $2 != "" {print}' | tr '\t' '\n' > $basef.cutadapt.cropped.fastq
 fi
+
 
 END1=$(date +%s)
 diff=$(( $END1 - $START1 ))
@@ -121,7 +145,7 @@ START1=$(date +%s)
 
 if [ $run_uniq == "Y" ]
 then
-	prinseq-lite.pl -fastq $basef.cutadapt.uniq.cropped.fastq -out_format 3 -out_good $basef.cutadapt.uniq.cropped.dusted -out_bad $basef.cutadapt.uniq.cropped.dusted.bad -log -lc_method dust -lc_threshold 7
+	prinseq-lite.pl -fastq $basef.cutadapt.uniq.cropped.fastq -out_format 3 -out_good $basef.cutadapt.uniq.cropped.dusted -out_bad $basef.cutadapt.uniq.cropped.dusted.bad -log $basef.prinseq.log  -lc_method dust -lc_threshold 7
 	mv -f $basef.cutadapt.uniq.cropped.dusted.fastq $basef.preprocessed.fastq
 else
 	prinseq-lite.pl -fastq $basef.cutadapt.cropped.fastq -out_format 3 -out_good $basef.cutadapt.cropped.dusted -out_bad $basef.cutadapt.cropped.dusted.bad -log -lc_method dust -lc_threshold 7
