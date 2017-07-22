@@ -86,7 +86,7 @@ for f in x??
 do
 	mv $f $f.fastq
 	log "preprocess.sh $f.fastq $quality N $length_cutoff $keep_short_reads $adapter_set $start_nt $crop_length $temporary_files_directory $quality_cutoff >& $f.preprocess.log"
-	preprocess.sh $f.fastq $quality N $length_cutoff $keep_short_reads $adapter_set $start_nt $crop_length $temporary_files_directory $quality_cutoff >& $f.preprocess.log &
+	"$SCRIPT_DIR/preprocess.sh" $f.fastq $quality N $length_cutoff $keep_short_reads $adapter_set $start_nt $crop_length $temporary_files_directory $quality_cutoff >& $f.preprocess.log &
 done
 
 for job in `jobs -p`
@@ -138,7 +138,7 @@ then
 	# selecting unique reads
 	sed "n;n;n;d" $basef2.preprocessed.fastq | sed "n;n;d" | sed "s/^@/>/g" > $basef2.preprocessed.fasta
 	gt sequniq -force -o $basef2.uniq.fasta $basef2.preprocessed.fasta
-	extractHeaderFromFastq.csh $basef2.uniq.fasta FASTA $basef2.preprocessed.fastq $basef2.uniq.fastq
+	"$SCRIPT_DIR/extractHeaderFromFastq.csh" $basef2.uniq.fasta FASTA $basef2.preprocessed.fastq $basef2.uniq.fastq
 	cp -f $basef2.uniq.fastq $basef2.preprocessed.fastq
 	END_UNIQ=$(date +%s)
 	diff_UNIQ=$(( END_UNIQ - START_UNIQ ))

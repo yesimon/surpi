@@ -18,11 +18,30 @@
 # Please see license file for details.
 
 scriptname=${0##*/}
-# source debug.sh
-source logging.sh
+# way to get the absolute path to this script that should
+# work regardless of whether or not this script has been sourced
+# Find original directory of bash script, resovling symlinks
+# http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in/246128#246128
+function absolute_path() {
+    local SOURCE="$1"
+    while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            SOURCE="$(readlink "$SOURCE")"
+        else
+            SOURCE="$(readlink -f "$SOURCE")"
+        fi
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+    done
+    echo "$SOURCE"
+}
+SCRIPT_PATH="$(absolute_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname $SCRIPT_PATH)"
+source "$SCRIPT_DIR/debug.sh"
+source "$SCRIPT_DIR/logging.sh"
 
 if [ $# -lt 6 ]; then
-  echo "Usage: $scriptname <annotated file> <SNAP/RAP> <gi Y/N> <species Y/N> <genus Y/N> <family Y/N> "
+  echo "Usage: $scriptname <annotated file> <SNAP/RAP> <gi Y/N> <species Y/N> <genus Y/N> <family Y/N> <barcodes Y/N>"
   exit
 fi
 
@@ -33,17 +52,24 @@ gi=$3
 species=$4
 genus=$5
 family=$6
+barcodes=$7
 ###
 
 ###substitute forward slash with @_ because forward slash in species name makes it ungreppable. using @_ because @ is used inside the contig barcode (ie. #@13 is barcode 13, contig generated)
-create_tab_delimited_table.pl -f $file_type $inputfile  |  sed 's/ /_/g' | sed 's/,/_/g' | sed 's/\//@_/g' > $inputfile.tempsorted
+"$SCRIPT_DIR/create_tab_delimited_table.pl" -f $file_type $inputfile  |  sed 's/ /_/g' | sed 's/,/_/g' | sed 's/\//@_/g' > $inputfile.tempsorted
 log "done creating $inputfile.tempsorted"
 
+shopt -s nullglob
+
 ###########GENERATE BARCODE LIST#####################
-sed 's/#/ /g'  $inputfile.tempsorted | sed 's/\// /g' | awk '{print$2}' | sed 's/^/#/g' | sed 's/[1-2]$//g' | sort | uniq > $inputfile.barcodes.int #makes a barcode list from the entire file #change $inputfile.tempsorted to $inputfile once no need for temp table
-log "created list of barcodes"
+if [[ $barcodes == "Y" ]]; then
+  sed 's/#/ /g'  $inputfile.tempsorted | sed 's/\// /g' | awk '{print $2}' | sed 's/^/#/g' | sed 's/[1-2]$//g' | sort | uniq > $inputfile.barcodes.int #makes a barcode list from the entire file #change $inputfile.tempsorted to $inputfile once no need for temp table
+  log "created list of barcodes"
 
 sed '/N/d' $inputfile.barcodes.int > $inputfile.barcodes
+else 
+  : > $inputfile.barcodes
+fi
 
 ######GENERATE gi LIST ##############
 if [ "$gi" != "N" ]

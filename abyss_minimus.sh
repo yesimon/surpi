@@ -16,8 +16,27 @@
 # SURPI has been released under a modified BSD license.
 # Please see license file for details.
 scriptname=${0##*/}
-source debug.sh
-source logging.sh
+# way to get the absolute path to this script that should
+# work regardless of whether or not this script has been sourced
+# Find original directory of bash script, resovling symlinks
+# http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in/246128#246128
+function absolute_path() {
+    local SOURCE="$1"
+    while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            SOURCE="$(readlink "$SOURCE")"
+        else
+            SOURCE="$(readlink -f "$SOURCE")"
+        fi
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+    done
+    echo "$SOURCE"
+}
+SCRIPT_PATH="$(absolute_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname $SCRIPT_PATH)"
+source "$SCRIPT_DIR/debug.sh"
+source "$SCRIPT_DIR/logging.sh"
 
 if [ $# -lt 5 ]
 then
@@ -61,10 +80,12 @@ diff_DEMULTIPLEX=$(( END_DEMULTIPLEX - START_DEMULTIPLEX ))
 log "Barcode demultiplex took $diff_DEMULTIPLEX s."
 ### generate fasta file for every separate barcode (demultiplex)
 
+shopt -s extglob
+
 for f in `cat $inputfile.barcodes` ; do
 	if [ $FLATTEN_BARCODES = "1" ]
 	then
-		ln -s $inputfile bar$f.$inputfile
+		ln -sf $inputfile bar$f.$inputfile
 	else
 		grep -E "$f(/|$)" $inputfile -A 1 --no-group-separator > bar$f.$inputfile
 	fi
@@ -73,7 +94,7 @@ for f in `cat $inputfile.barcodes` ; do
 	START_SPLIT=$(date +%s)
 
 	cp bar$f.$inputfile bar$f.${inputfile}_n # So that the unsplit demultiplexed file is also denovo assembled #
-	split_fasta.pl -i bar$f.$inputfile -o bar$f.$inputfile -n $split_FASTA_size
+	"$SCRIPT_DIR/split_fasta.pl" -i bar$f.$inputfile -o bar$f.$inputfile -n $split_FASTA_size
 	log "Completed splitting FASTA file."
 	END_SPLIT=$(date +%s)
 	diff_SPLIT=$(( $END_SPLIT - $START_SPLIT ))
@@ -81,9 +102,7 @@ for f in `cat $inputfile.barcodes` ; do
 	### run abyss (deBruijn assembler) on each 100,000 read demultiplexed fasta file, including the unsplit demultiplexed file
 	log "Running abyss on each $split_FASTA_size chunk..."
 	START_ABYSS=$(date +%s)
-
-	for d in bar$f.${inputfile}_* ; do
-    echo $d
+	for d in bar$f.${inputfile}_+([0-9]) ; do
 	  log "Command: abyss-pe k=$kmer name=$d.f se=$d np=$cores >& $d.abyss.log"
 		#abyss-pe k=$kmer name=$d.f se=$d np=$cores >& $d.abyss.log
 		abyss-pe k=$kmer name=$d.f se=$d >& $d.abyss.log

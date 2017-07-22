@@ -17,12 +17,12 @@ use warnings;
 use Time::HiRes qw[gettimeofday tv_interval];
 use DBI;
 
-if ( @ARGV != 5 ) {
-	print "USAGE: taxonomy_lookup.pl <blast_file/sam_file> <file_type:blast/sam> <nucl/prot> <cores> <taxonomy_reference_directory>\n";
+if ( @ARGV != 6 ) {
+	print "USAGE: taxonomy_lookup.pl <blast_file/sam_file> <file_type:blast/sam> <nucl/prot> <cores> <taxonomy_reference_directory> <gi/tax>\n";
 	exit;
 }
 
-my ($inputfile, $filetype, $seq_type, $cores, $database_directory) = @ARGV;
+my ($inputfile, $filetype, $seq_type, $cores, $database_directory, $id_type) = @ARGV;
 
 my $sql_taxdb_loc_nucl = "$database_directory/gi_taxid_nucl.db";
 my $sql_taxdb_loc_prot = "$database_directory/gi_taxid_prot.db";
@@ -34,29 +34,32 @@ my $sql_taxdb_loc;
 my $basef_inputfile = $inputfile;
 $basef_inputfile =~ s{\.[^.]+$}{};
 
+
+	if ($seq_type eq "nucl") {
+		$gi_table = "GI_Taxa_nucl";
+		$sql_taxdb_loc = $sql_taxdb_loc_nucl;
+	}
+	elsif ($seq_type eq "prot") {
+		$gi_table = "GI_Taxa_prot";
+		$sql_taxdb_loc = $sql_taxdb_loc_prot;
+	}
+	else {
+		print "\nImproper database specified.\n\n";
+		exit;
+	}
+
 # First, extract gi from SAM/BLAST inputfile
-if ($filetype eq "sam") {
-	system ("awk {'print \$3'} $inputfile | awk -F \"|\" {'print \$2'} > $basef_inputfile.gi");
-} elsif ($filetype eq "blast") {
-	system ("awk {'print \$2'} $inputfile | awk -F \"|\" {'print \$2'} > $basef_inputfile.gi");
-}
+if ($id_type eq "gi") {
+	if ($filetype eq "sam") {
+		system ("awk {'print \$3'} $inputfile | awk -F \"|\" {'print \$2'} > $basef_inputfile.gi");
+	} elsif ($filetype eq "blast") {
+		system ("awk {'print \$2'} $inputfile | awk -F \"|\" {'print \$2'} > $basef_inputfile.gi");
+	}
 
-if ($seq_type eq "nucl") {
-	$gi_table = "GI_Taxa_nucl";
-	$sql_taxdb_loc = $sql_taxdb_loc_nucl;
-}
-elsif ($seq_type eq "prot") {
-	$gi_table = "GI_Taxa_prot";
-	$sql_taxdb_loc = $sql_taxdb_loc_prot;
-}
-else {
-	print "\nImproper database specified.\n\n";
-	exit;
-}
 
-my $extracttime = tv_interval($begintime);
+	my $extracttime = tv_interval($begintime);
 
-print localtime()."\t$0\tTime to extract gi: $extracttime seconds\n";
+	print localtime()."\t$0\tTime to extract gi: $extracttime seconds\n";
 
 #create a unique list of gi, make a hash from that list, use the hash to populate the original nonunique list with tax info
 #starting point -> file containing all gi to look up
@@ -80,10 +83,11 @@ print localtime()."\t$0\tTime to extract gi: $extracttime seconds\n";
 
 
 # sort/uniq gi file
-my $startsort = [gettimeofday()];
-system ("sort -u $basef_inputfile.gi > $basef_inputfile.gi.uniq");
-my $sorttime = tv_interval($startsort);
-print localtime()."\t$0\tTime to sort -u gi file: $sorttime seconds\n";
+	my $startsort = [gettimeofday()];
+	system ("sort -u $basef_inputfile.gi > $basef_inputfile.gi.uniq");
+	my $sorttime = tv_interval($startsort);
+	print localtime()."\t$0\tTime to sort -u gi file: $sorttime seconds\n";
+}
 
 # Parallelization can occur at this point in the code. Since the file in now sorted, it can be split into n chunks
 # with no overlap.
@@ -102,96 +106,234 @@ my $namerow;
 my $sth = $names_nodes_db->prepare("SELECT * FROM nodes WHERE taxid = ?");
 my @noderow;
 
-open (UNIQGI, "$basef_inputfile.gi.uniq") or die $!;
+if ($id_type eq "gi") {
+	open (UNIQGI, "$basef_inputfile.gi.uniq") or die $!;
 
-my $starthash = [gettimeofday()];
+	my $starthash = [gettimeofday()];
 
-while (<UNIQGI>) {
-	chomp;
-	my ($family, $genus, $species, $lineage) = ("") x 4;
-	my $result = taxonomy_fgsl($_, $seq_type);
+	while (<UNIQGI>) {
+		chomp;
+		my ($family, $genus, $species, $lineage) = ("") x 4;
+		my $result = taxonomy_fgsl($_, $seq_type);
 
-	if ($result =~ /family--(.*?)\t/) {
-		$family = $1;
+		if ($result =~ /family--(.*?)\t/) {
+			$family = $1;
+		}
+
+		if ($result =~ /genus--(.*?)\t/) {
+			$genus = $1;
+		}
+
+		if ($result =~ /species--(.*?)\t/) {
+			$species = $1;
+		}
+
+		if ($result =~ /lineage--(.*)$/) {
+			$lineage = $1;
+		}
+
+		$taxonomy{$_}{"family"} = $family;
+		$taxonomy{$_}{"genus"} = $genus;
+		$taxonomy{$_}{"species"} = $species;
+		$taxonomy{$_}{"lineage"} = $lineage;
+
+#provide feedback on hash construction
+#my $count = scalar(keys %taxonomy);
+#if ($count % 500 == 0) {print "$count\n";}
 	}
+	close (UNIQGI);
 
-	if ($result =~ /genus--(.*?)\t/) {
-		$genus = $1;
+	my $endhash = tv_interval($starthash);
+	print localtime()."\t$0\tTime to create hash: $endhash seconds\n";
+	my $starttaxwrite = [gettimeofday()];
+
+	open (ALLGI, "$basef_inputfile.gi") or die $!;
+	open (FINALTAXOUTPUT, ">$basef_inputfile.gi.taxonomy") or die $!;
+	while (my $gi = <ALLGI>) {
+		chomp $gi;
+		print FINALTAXOUTPUT "$gi\t";
+		print FINALTAXOUTPUT "family--$taxonomy{$gi}{\"family\"}\t";
+		print FINALTAXOUTPUT "genus--$taxonomy{$gi}{\"genus\"}\t";
+		print FINALTAXOUTPUT "species--$taxonomy{$gi}{\"species\"}\t";
+		print FINALTAXOUTPUT "lineage--$taxonomy{$gi}{\"lineage\"}\n";
 	}
+	close (ALLGI);
+	close (FINALTAXOUTPUT);
+	my $endtaxwrite = tv_interval($starttaxwrite);
+	print localtime()."\t$0\tTime to write taxonomy file: $endtaxwrite seconds\n";
 
-	if ($result =~ /species--(.*?)\t/) {
-		$species = $1;
+	my $start_annotated_write = [gettimeofday()];
+
+	open (TAXONOMY, "$basef_inputfile.gi.taxonomy");
+	open (SAMFILE, "$inputfile");
+	open (OUTALL, ">$basef_inputfile.all.annotated");
+	while (my $sam_line = <SAMFILE>) {
+		chomp($sam_line);
+		my $tax_line = <TAXONOMY>;
+		chomp($tax_line);
+		print OUTALL "$sam_line\t$tax_line\n";
 	}
+	close(OUTALL);
+	close(SAMFILE);
+	close (TAXONOMY);
+	my $end_annotated_write = tv_interval($start_annotated_write);
+	print localtime()."\t$0\tTime to write annotated file: $end_annotated_write seconds\n";
 
-	if ($result =~ /lineage--(.*)$/) {
-		$lineage = $1;
-	}
+	my $elapsedtime = tv_interval($begintime);
+	print localtime()."\t$0\tTotal time: $elapsedtime seconds\n";
 
-	$taxonomy{$_}{"family"} = $family;
-	$taxonomy{$_}{"genus"} = $genus;
-	$taxonomy{$_}{"species"} = $species;
-	$taxonomy{$_}{"lineage"} = $lineage;
-
-	#provide feedback on hash construction
-	#my $count = scalar(keys %taxonomy);
-	#if ($count % 500 == 0) {print "$count\n";}
-}
-close (UNIQGI);
-
-my $endhash = tv_interval($starthash);
-print localtime()."\t$0\tTime to create hash: $endhash seconds\n";
-
-my $starttaxwrite = [gettimeofday()];
-
-open (ALLGI, "$basef_inputfile.gi") or die $!;
-open (FINALTAXOUTPUT, ">$basef_inputfile.gi.taxonomy") or die $!;
-while (my $gi = <ALLGI>) {
-	chomp $gi;
-	print FINALTAXOUTPUT "$gi\t";
-	print FINALTAXOUTPUT "family--$taxonomy{$gi}{\"family\"}\t";
-	print FINALTAXOUTPUT "genus--$taxonomy{$gi}{\"genus\"}\t";
-	print FINALTAXOUTPUT "species--$taxonomy{$gi}{\"species\"}\t";
-	print FINALTAXOUTPUT "lineage--$taxonomy{$gi}{\"lineage\"}\n";
-}
-close (ALLGI);
-close (FINALTAXOUTPUT);
-
-my $endtaxwrite = tv_interval($starttaxwrite);
-print localtime()."\t$0\tTime to write taxonomy file: $endtaxwrite seconds\n";
-
-my $start_annotated_write = [gettimeofday()];
-
-open (TAXONOMY, "$basef_inputfile.gi.taxonomy");
-open (SAMFILE, "$inputfile");
-open (OUTALL, ">$basef_inputfile.all.annotated");
-while (my $sam_line = <SAMFILE>) {
-	chomp($sam_line);
-	my $tax_line = <TAXONOMY>;
-	chomp($tax_line);
-	print OUTALL "$sam_line\t$tax_line\n";
-}
-close(OUTALL);
-close(SAMFILE);
-close (TAXONOMY);
-
-my $end_annotated_write = tv_interval($start_annotated_write);
-print localtime()."\t$0\tTime to write annotated file: $end_annotated_write seconds\n";
-
-my $elapsedtime = tv_interval($begintime);
-print localtime()."\t$0\tTotal time: $elapsedtime seconds\n";
-
-#remove intermediate files
-unlink ("$basef_inputfile".".gi");
-unlink ("$basef_inputfile".".gi.uniq");
-unlink ("$basef_inputfile".".gi.taxonomy");
+        #remove intermediate files
+	unlink ("$basef_inputfile".".gi");
+	unlink ("$basef_inputfile".".gi.uniq");
+	unlink ("$basef_inputfile".".gi.taxonomy");
 
 exit;
+} else {
+	if ($filetype eq "sam") {
+		system ("awk {'print \$3'} $inputfile | awk -F \"|\" {'print \$2'} > $basef_inputfile.tax");
+	} elsif ($filetype eq "blast") {
+		system ("awk {'print \$2'} $inputfile | awk -F \"|\" {'print \$2'} > $basef_inputfile.tax");
+	}
+	my $startsort = [gettimeofday()];
+	system ("sort -u $basef_inputfile.tax > $basef_inputfile.tax.uniq");
+	my $sorttime = tv_interval($startsort);
+	print localtime()."\t$0\tTime to sort -u tax file: $sorttime seconds\n";
+	open (UNIQGI, "$basef_inputfile.tax.uniq") or die $!;
+
+	my $starthash = [gettimeofday()];
+
+	while (<UNIQGI>) {
+		chomp;
+		my ($family, $genus, $species, $lineage) = ("") x 4;
+		my $result = taxonomy_ftsl($_, $seq_type);
+
+		if ($result =~ /family--(.*?)\t/) {
+			$family = $1;
+		}
+
+		if ($result =~ /genus--(.*?)\t/) {
+			$genus = $1;
+		}
+
+		if ($result =~ /species--(.*?)\t/) {
+			$species = $1;
+		}
+
+		if ($result =~ /lineage--(.*)$/) {
+			$lineage = $1;
+		}
+
+		$taxonomy{$_}{"family"} = $family;
+		$taxonomy{$_}{"genus"} = $genus;
+		$taxonomy{$_}{"species"} = $species;
+		$taxonomy{$_}{"lineage"} = $lineage;
+
+	}
+	close (UNIQGI);
+
+	my $starttaxwrite = [gettimeofday()];
+	open (ALLTAX, "$basef_inputfile.tax") or die $!;
+	open (FINALTAXOUTPUT, ">$basef_inputfile.tax.taxonomy") or die $!;
+	while (my $tax = <ALLTAX>) {
+		chomp $tax;
+		print FINALTAXOUTPUT "$tax\t";
+		print FINALTAXOUTPUT "family--$taxonomy{$tax}{\"family\"}\t";
+		print FINALTAXOUTPUT "genus--$taxonomy{$tax}{\"genus\"}\t";
+		print FINALTAXOUTPUT "species--$taxonomy{$tax}{\"species\"}\t";
+		print FINALTAXOUTPUT "lineage--$taxonomy{$tax}{\"lineage\"}\n";
+	}
+	close (ALLTAX);
+	close (FINALTAXOUTPUT);
+	my $endtaxwrite = tv_interval($starttaxwrite);
+	print localtime()."\t$0\tTime to write taxonomy file: $endtaxwrite seconds\n";
+
+	my $start_annotated_write = [gettimeofday()];
+
+	open (TAXONOMY, "$basef_inputfile.tax.taxonomy");
+	open (SAMFILE, "$inputfile");
+	open (OUTALL, ">$basef_inputfile.all.annotated");
+	while (my $sam_line = <SAMFILE>) {
+		chomp($sam_line);
+		my $tax_line = <TAXONOMY>;
+		chomp($tax_line);
+		print OUTALL "$sam_line\t$tax_line\n";
+	}
+	close(OUTALL);
+	close(SAMFILE);
+	close (TAXONOMY);
+	
+	my $elapsedtime = tv_interval($begintime);
+	print localtime()."\t$0\tTotal time: $elapsedtime seconds\n";
+
+        #remove intermediate files
+	unlink ("$basef_inputfile".".tax");
+	unlink ("$basef_inputfile".".tax.uniq");
+	unlink ("$basef_inputfile".".tax.taxonomy");
+}
+
+
+
 
 sub trim ($){
         my $str = shift;
         $str =~ s/^\s+//;
         $str =~ s/\s+$//;
         return $str;
+}
+
+sub taxonomy_ftsl {
+	my ($taxid, $seq_type) = @_;
+
+	my $lineage = "";
+	my $name;
+	my $gi_count = 0;
+	my %rank_to_print;
+	my $taxonomy;
+
+	$rank_to_print{family} = "1";
+	$rank_to_print{genus} = "1";
+	$rank_to_print{species} = "1";
+
+
+	my $begintime = [gettimeofday()];
+	my $numeric_lineage ="";
+
+	$taxonomy = "$taxid\t";
+
+	my @taxids = split(",", $taxid);
+	$taxid = $taxids[0];
+	if ($taxid) {
+		while ($taxid > 1) {
+			# Obtain the scientific name corresponding to a taxid
+			$name_return->execute(($taxid));
+			# Obtain the parent taxa taxid
+			# nodes table: taxid - parent_tax id - rank
+			$sth->execute(($taxid));
+			if (@noderow = $sth->fetchrow_array) {
+				(my $tid, my $parent, my $rank) = @noderow;
+
+				if ($namerow = $name_return->fetchrow_array) {
+					$name = trim($namerow);
+				}
+				# print the rank if specified on the command line
+				if (exists($rank_to_print{$rank})) {
+					$taxonomy = $taxonomy."$rank--$name\t";
+				}
+				# Build the taxonomy path
+				$lineage = "$name;$lineage";
+				$numeric_lineage = "$tid "."$numeric_lineage ";
+
+				$taxid=$parent;
+			} else {
+				last;
+			}
+		}
+	}
+	$taxonomy = $taxonomy."lineage--$lineage";
+# 	print "$numeric_lineage" if $test;
+
+	my $elapsedtime = tv_interval($begintime);
+	return $taxonomy;
 }
 
 sub taxonomy_fgsl {

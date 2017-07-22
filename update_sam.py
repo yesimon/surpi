@@ -31,21 +31,21 @@ outputFile = open(outputFile1, "w")
 line1 = file1.readline()
 
 while line1 != '':
-	data1 = line1.split()
+	data1 = line1.split("\t")
 	if (data1[0][0]!="@"):
 		header = data1[0].split("|")
 		if (len(header)>=2): # these is a hit in header
 			dvalue=header[1]
-			gi=header[2]
+			taxids=header[2].split(",")
 			edit_distance=int(data1[12].split(":")[2])
 
-			line2a = line1.replace(data1[2], "gi|" + str(gi) + "|",1)
-			line2b = line2a.replace(data1[0], header[0],1)
+			data1[2] = "taxids|" + ",".join(taxids) + "|"
+			data1[0] = header[0] 
 			if (edit_distance >= 0): # then there is already a hit in the SAM entry
-				line2c = line2b.replace(data1[13], "NM:i:" + str(dvalue))
+				data1[13] = "NM:i:" + str(dvalue)
 			else:
-				line2c = line2b.replace(data1[12], data1[12] + "\t" + "NM:i:" + str(dvalue),1)
-			outputFile.write(line2c)
+				data1[12] = data1[12] + "\t" + "NM:i:" + str(dvalue)
+			outputFile.write("\t".join(data1))
 		else:
 			outputFile.write(line1)
 	else:

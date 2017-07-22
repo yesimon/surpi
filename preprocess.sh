@@ -126,12 +126,12 @@ START1=$(date +%s)
 if [ $run_uniq == "Y" ]
 then
 	log "We will be using $crop_length as the length of the cropped read"
-	log "crop_reads.csh $basef.cutadapt.uniq.fastq $start_nt $crop_length > $basef.cutadapt.uniq.cropped.fastq"
-	"$SCRIPT_DIR/crop_reads.csh" $basef.cutadapt.uniq.fastq $start_nt $crop_length | paste - - - - | awk 'BEGIN {FS="\t"} $2 != "" {print}' | tr '\t' '\n' > $basef.cutadapt.uniq.cropped.fastq
+	log "crop_reads.sh $basef.cutadapt.uniq.fastq $start_nt $crop_length > $basef.cutadapt.uniq.cropped.fastq"
+	"$SCRIPT_DIR/crop_reads.sh" $basef.cutadapt.uniq.fastq $start_nt $crop_length > $basef.cutadapt.uniq.cropped.fastq
 else
 	log "We will be using $crop_length as the length of the cropped read"
-	log "crop_reads.csh $basef.cutadapt.fastq $start_nt $crop_length > $basef.cutadapt.cropped_raw.fastq"
-	"$SCRIPT_DIR/crop_reads.csh" $basef.cutadapt.fastq $start_nt $crop_length | paste - - - - | awk 'BEGIN {FS="\t"} $2 != "" {print}' | tr '\t' '\n' > $basef.cutadapt.cropped.fastq
+	log "crop_reads.sh $basef.cutadapt.fastq $start_nt $crop_length > $basef.cutadapt.cropped_raw.fastq"
+	"$SCRIPT_DIR/crop_reads.sh" $basef.cutadapt.fastq $start_nt $crop_length > $basef.cutadapt.cropped.fastq
 fi
 
 

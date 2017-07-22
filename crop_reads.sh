@@ -1,6 +1,6 @@
-#!/bin/csh
+#!/bin/bash
 #
-#	crop_reads.csh
+#	crop_reads.bash
 #
 # 	crops FASTA/FASTQ reads from $argv[1] to $argv[2]
 #	Chiu Laboratory
@@ -20,9 +20,10 @@
 # Please see license file for details.
 # Last revised 1/26/2014
 
-if ($#argv != 3) then
-	echo "Usage: crop_reads.csh <input FASTQ/FASTA file> <start pos> <cropped length>"
-	exit(1)
-endif
+if [[ $# -ne 3 ]]; then
+	echo "Usage: crop_reads.sh <input FASTQ/FASTA file> <start pos> <cropped length>"
+	exit 1
+fi
 
-cat $argv[1] | awk '(NR%2==1){print $0} (NR%2==0){print substr($0,'"$argv[2]"','"$argv[3]"')}'
+cat $1 | awk '(NR%2==1){print $0} (NR%2==0){print substr($0, '"$2"','"$3"')}' | paste - - - - | awk 'BEGIN {FS="\t"} $2 != "" {print}' | tr '\t' '\n' 
+

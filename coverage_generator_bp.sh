@@ -14,10 +14,29 @@
 # Please see license file for details.
 
 scriptname=${0##*/}
+# way to get the absolute path to this script that should
+# work regardless of whether or not this script has been sourced
+# Find original directory of bash script, resovling symlinks
+# http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in/246128#246128
+function absolute_path() {
+    local SOURCE="$1"
+    while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            SOURCE="$(readlink "$SOURCE")"
+        else
+            SOURCE="$(readlink -f "$SOURCE")"
+        fi
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+    done
+    echo "$SOURCE"
+}
+SCRIPT_PATH="$(absolute_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname $SCRIPT_PATH)"
 
 if [ $# -lt 7 ]
 then
-	echo "Usage: $scriptname <annotated SNAP file> <annotated RAPSearch file> <e value> <# cores> <top X gis to compare against each other> <top X coverage plots per genus> <basef>"
+	echo "Usage: $scriptname <annotated SNAP file> <annotated RAPSearch file> <e value> <# cores> <top X gis to compare against each other> <top X coverage plots per genus> <basef> <barcodes Y/N>"
 	exit
 fi
 ###
@@ -28,14 +47,17 @@ cores=$4
 top_gis=$5
 top_plots=$6
 basef=$7
+barcodes=$8
 ###
 
 START0=$(date +%s)
 
 echo -e "$(date)\t$scriptname\tStarting coverage_generator_bp.sh"
 sed 's/ /_/g' $SNAP_file > $SNAP_file.nospace # removing spaces allows genera with spaces in their names (eg Influenzavirus A to be properly `cat`
-create_tab_delimited_table.pl  -f SNAP $SNAP_file.nospace > $SNAP_file.tab  # creates a 4 column tab delimited table: header \t gi \t genus \t family so that genus can be accurately extracted
+"$SCRIPT_DIR/create_tab_delimited_table.pl"  -f SNAP $SNAP_file.nospace > $SNAP_file.tab  # creates a 4 column tab delimited table: header \t gi \t genus \t family so that genus can be accurately extracted
 echo -e "$(date)\t$scriptname\tDone creating $SNAP_file.tab tab delimited table"
+
+if [[ $barcodes == Y ]]; then
 #GENERATE LIST OF ALL BARCODES
 
 # create list of barcodes present in $SNAP_file
@@ -45,13 +67,14 @@ echo -e "$(date)\t$scriptname\tDone creating $SNAP_file.tab tab delimited table"
 sed 's/#/ /g'  $SNAP_file.tab | sed 's/\// /g' | awk '{print$2}' | sort | uniq | sed '/N/d' > $SNAP_file.barcodes
 
 echo -e "$(date)\t$scriptname\tCreated list of all barcodes in $SNAP_file"
+fi
 
 END0=$(date +%s)
 diff=$(( END0 - START0 ))
 echo -e "$(date)\t$scriptname\tModify $SNAP_file and $RAPSearch_file Took $diff seconds"
 echo "-----------------------------"
 # LOOP 1 : FOR 	EACH BARCODE Generates a .pdf file with 1 best coverage map for each genus, created by BLASTning all reads from each genus (in $SNAP_file and $RAPSearch_file) against each gi found in $SNAP_file for that barcode and corresponding to that genus.
-for bar in `cat $SNAP_file.barcodes`
+for bar in "$(cat $SNAP_file.barcodes)"
 do
 	echo -e "$(date)\t$scriptname\tParsing barcode $f"
 	START1=$(date +%s)
@@ -93,7 +116,7 @@ do
 		# create list of curated GIs $SNAP_file.$genus.gi.list.curatedgenome
 		# First retain only gis that are complete genomes if no GIs with "complete genomes" are returned, we'll go to GIs  "complete sequences", if no complete sequences, then we just go with the GIs we have
 
-		get_genbankfasta.pl -i bar.$bar.$SNAP_file.$genus.gi.list  > bar.$bar.$SNAP_file.$genus.gi.headers
+		"$SCRIPT_DIR/get_genbankfasta.pl" -i bar.$bar.$SNAP_file.$genus.gi.list  > bar.$bar.$SNAP_file.$genus.gi.headers
 
 		egrep ">gi.*[Cc]omplete [Gg]enome" bar.$bar.$SNAP_file.$genus.gi.headers  | awk -F "|" '{print$2}'  | head -n $top_gis > bar.$bar.$SNAP_file.$genus.gi
 		if [ -s bar.$bar.$SNAP_file.$genus.gi ]
@@ -135,7 +158,7 @@ do
 		for gi in `cat bar.$bar.$SNAP_file.$genus.gi`
 		do
 			START5=$(date +%s)
-			plot_reads_to_gi.sh SnRa.$mixed $gi $genus $e_value $cores
+			"$SCRIPT_DIR/plot_reads_to_gi.sh" SnRa.$mixed $gi $genus $e_value $cores
 			# highlight Report files
 			mv SnRa.$mixed.$gi.$genus.$e_value.report bar.$bar.$genus.$basef.$gi.$e_value.Report
 			echo -e "$(date)\t$scriptname\tDone bar.$bar.$genus.$basef.$gi.$e_value.Report"

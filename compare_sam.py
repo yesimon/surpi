@@ -41,7 +41,7 @@ line1 = file1.readline()
 linenum += 1
 
 while line1 != '':
-    data1 = line1.split()
+    data1 = line1.split("\t")
 
     # check to see whether line is in the SAM header or alignment section
     if (data1[0][0]!="@"):
@@ -72,8 +72,9 @@ while line1 != '':
                     replacements += 1
                     sum_data1 += int(edit_distance_current)
                     # need to pick the new gi, not the old gi, bug fix 1/27/13
-                    gi=data1[2].split("|")[1]
-                    replacement_line = line1.replace("|" + firstentry[1] + "|" + firstentry[2],"|" + str(edit_distance_current) + "|" + str(gi),1)
+                    #gi=data1[2].split("|")[1]
+                    taxids = data1[2].split("|")[1::2]
+                    replacement_line = line1.replace("|" + firstentry[1] + "|" + firstentry[2],"|" + str(edit_distance_current) + "|" + ",".join(taxids),1)
                     outputFile.write(replacement_line)
                 else:
                     sum_data1 += int(edit_distance_previous)
@@ -82,8 +83,9 @@ while line1 != '':
                 edit_distance_current = data1[12].split(":")[2]
                 existing_hits += 1
                 sum_data1 += int(edit_distance_current)
-                gi=data1[2].split("|")[1]
-                replacement_line = line1.replace(data1[0],data1[0] + "|" + str(edit_distance_current) + "|" + str(gi),1)
+                #gi=data1[2].split("|")[1]
+                taxids = data1[2].split("|")[1::2]
+                replacement_line = line1.replace(data1[0],data1[0] + "|" + str(edit_distance_current) + "|" + ",".join(taxids),1)
                 outputFile.write(replacement_line)
                 replacements+=1
         else:

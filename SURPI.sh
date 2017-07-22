@@ -268,6 +268,9 @@ eBLASTn="1e-15"
 # Reference Data
 ##########################
 
+# Reference db built with gis or taxonomy (gi/tax)
+ID_TYPE=tax
+
 # SNAP-indexed database of host genome (for subtraction phase)
 # SURPI will subtract all SNAP databases found in this directory from the input sequence
 # Useful if you want to subtract multiple genomes (without combining SNAP databases)
@@ -531,6 +534,18 @@ echo "--------------------------------------------------------------------------
 echo "REFERENCE DATA VERIFICATION"
 echo "-----------------------------------------------------------------------------------------"
 
+echo -e "DB ID type"
+if [[ "$ID_TYPE" != tax && "$ID_TYPE" != gi ]]; then
+    echo -e "\t$f: ${red}BAD${endColor}"
+    reference_check="FAIL"
+else
+   if [[ $ID_TYPE == gi ]]; then
+     GI_TABLE=Y
+   else
+     GI_TABLE=N
+   fi
+fi
+
 echo -e "SNAP subtraction db"
 for f in $SNAP_subtraction_folder/*
 do
@@ -575,7 +590,7 @@ do
 done
 
 #verify taxonomy is functioning properly
-result=$( taxonomy_lookup_embedded.pl -d nucl -q $taxonomy_db_directory 149408158 )
+result=$( "$SCRIPT_DIR/taxonomy_lookup_embedded.pl" -d nucl -q $taxonomy_db_directory 149408158 )
 echo "taxonomy result: ${result}"
 if [ $result == "149408158" ]
 then
@@ -741,6 +756,8 @@ if [[ $VERIFICATION -eq 1 ]] #stop pipeline if using verification mode
 then
   exit
 fi
+
+BARCODES=N
 ###########################################################
 log "########## STARTING SURPI PIPELINE ##########"
 START_PIPELINE=$(date +%s)
@@ -846,6 +863,7 @@ then
       elif [ $snap_integrator = "end" ]
       then
         if [ "$snap_nt_procedure" = "AWS_master_slave" ]
+
         then
           # transfer data to slave, start SNAP on each slave, and wait for results
           #check if slave_setup is running before progressing to snap_on_slave.sh
@@ -878,7 +896,7 @@ then
     log "SNAP to NT took $diff_SNAPNT seconds." | tee -a timing.$basef.log
     mv -f "$basef_h.human.snap.unmatched.NT.sam" "$basef.NT.snap.sam"
   fi
-
+  
   if [ ! -f "$basef.NT.snap.matched.fulllength.all.annotated.sorted" ]
   then
     log "Starting: parsing $basef.NT.snap.sam"
@@ -900,7 +918,7 @@ then
     ###retrieve taxonomy matched to NT ###
     log "taxonomy retrieval for $basef.NT.snap.matched.fulllength.sam"
     log "Parameters: taxonomy_lookup.pl $basef.NT.snap.matched.fulllength.sam sam nucl $cores $taxonomy_db_directory"
-    "$SCRIPT_DIR/taxonomy_lookup.pl" "$basef.NT.snap.matched.fulllength.sam" sam nucl $cores $taxonomy_db_directory
+    "$SCRIPT_DIR/taxonomy_lookup.pl" "$basef.NT.snap.matched.fulllength.sam" sam nucl $cores $taxonomy_db_directory $ID_TYPE
     sort -k 13.7n "$basef.NT.snap.matched.fulllength.all.annotated" > "$basef.NT.snap.matched.fulllength.all.annotated.sorted" # sam format is no longer disturbed
     rm -f  "$basef.NT.snap.matched.fulllength.gi" "$basef.NT.snap.matched.fullength.gi.taxonomy"
   fi
@@ -908,23 +926,23 @@ then
   if [ ! -f "$basef.NT.snap.unmatched.uniq.fl.fasta" ]
   then
     # adjust filenames for FAST mode
-    grep "Viruses;" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" > "$basef.NT.snap.matched.fl.Viruses.annotated"
-    grep "Bacteria;" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" > "$basef.NT.snap.matched.fl.Bacteria.annotated"
+    grep "Viruses;" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" > "$basef.NT.snap.matched.fl.Viruses.annotated" || true
+    grep "Bacteria;" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" > "$basef.NT.snap.matched.fl.Bacteria.annotated" || true
 
     ##SNN140507 cleanup bacterial reads
     log "Parameters: ribo_snap_bac_euk.sh $basef.NT.snap.matched.fl.Bacteria.annotated BAC $cores $ribo_snap_bac_euk_directory"
-    ribo_snap_bac_euk.sh $basef.NT.snap.matched.fl.Bacteria.annotated BAC $cores $ribo_snap_bac_euk_directory #SNN140507
+    "$SCRIPT_DIR/ribo_snap_bac_euk.sh" $basef.NT.snap.matched.fl.Bacteria.annotated BAC $cores $ribo_snap_bac_euk_directory #SNN140507
     if [ $run_mode = "Comprehensive" ]
     then
-      grep "Primates;" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" > "$basef.NT.snap.matched.fl.Primates.annotated"
-      grep -v "Primates" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" | grep "Mammalia" > "$basef.NT.snap.matched.fl.nonPrimMammal.annotated"
-      grep -v "Mammalia" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" | grep "Chordata" > "$basef.NT.snap.matched.fl.nonMammalChordat.annotated"
-      grep -v "Chordata" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" | grep "Eukaryota" > "$basef.NT.snap.matched.fl.nonChordatEuk.annotated"
-      ribo_snap_bac_euk.sh $basef.NT.snap.matched.fl.nonChordatEuk.annotated EUK $cores $ribo_snap_bac_euk_directory
+      grep "Primates;" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" > "$basef.NT.snap.matched.fl.Primates.annotated" || true
+      grep -v "Primates" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" | grep "Mammalia" > "$basef.NT.snap.matched.fl.nonPrimMammal.annotated" || true
+      grep -v "Mammalia" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" | grep "Chordata" > "$basef.NT.snap.matched.fl.nonMammalChordat.annotated" || true
+      grep -v "Chordata" "$basef.NT.snap.matched.fulllength.all.annotated.sorted" | grep "Eukaryota" > "$basef.NT.snap.matched.fl.nonChordatEuk.annotated" || true
+      "$SCRIPT_DIR/ribo_snap_bac_euk.sh" $basef.NT.snap.matched.fl.nonChordatEuk.annotated EUK $cores $ribo_snap_bac_euk_directory
     fi
     log "Done taxonomy retrieval"
-    log "Parameters: table_generator.sh $basef.NT.snap.matched.fl.Viruses.annotated SNAP Y Y Y Y>& $basef.table_generator_snap.matched.fl.log"
-    table_generator.sh "$basef.NT.snap.matched.fl.Viruses.annotated" SNAP Y Y Y Y>& "$basef.table_generator_snap.matched.fl.log"
+    log "Parameters: table_generator.sh $basef.NT.snap.matched.fl.Viruses.annotated SNAP $GI_TABLE Y Y Y $BARCODES >& $basef.table_generator_snap.matched.fl.log"
+    "$SCRIPT_DIR/table_generator.sh" "$basef.NT.snap.matched.fl.Viruses.annotated" SNAP $GI_TABLE Y Y Y $BARCODES >& "$basef.table_generator_snap.matched.fl.log"
     if [ $run_mode = "Comprehensive" ]
     then
       ### convert to FASTQ and retrieve full-length sequences to add to unmatched SNAP for viral RAPSearch###
@@ -942,12 +960,12 @@ then
     then
       log "we will be using 50 as the length of the cropped read for removing unique and low-complexity reads"
       log "Parameters: crop_reads.csh $basef.NT.snap.unmatched.fulllength.sorted.fasta 25 50 > $basef.NT.snap.unmatched.fulllength.sorted.cropped.fasta"
-      crop_reads.csh "$basef.NT.snap.unmatched.fulllength.sorted.fasta" 25 50 > "$basef.NT.snap.unmatched.fulllength.sorted.cropped.fasta"
+      "$SCRIPT_DIR/crop_reads.sh" "$basef.NT.snap.unmatched.fulllength.sorted.fasta" 25 50 > "$basef.NT.snap.unmatched.fulllength.sorted.cropped.fasta"
       log "*** reads cropped ***"
       log "Parameters: gt sequniq -seqit -force -o $basef.NT.snap.unmatched.fulllength.sorted.cropped.uniq.fasta $basef.NT.snap.unmatched.fulllength.sorted.cropped.fasta"
       gt sequniq -seqit -force -o "$basef.NT.snap.unmatched.fulllength.sorted.cropped.uniq.fasta" "$basef.NT.snap.unmatched.fulllength.sorted.cropped.fasta"
       log "Parameters: extractAlltoFast.sh $basef.NT.snap.unmatched.fulllength.sorted.cropped.uniq.fasta FASTA $basef.NT.snap.unmatched.fulllength.fasta FASTA $basef.NT.snap.unmatched.uniq.fl.fasta FASTA"
-      extractAlltoFast.sh "$basef.NT.snap.unmatched.fulllength.sorted.cropped.uniq.fasta" FASTA "$basef.NT.snap.unmatched.fulllength.fasta" FASTA "$basef.NT.snap.unmatched.uniq.fl.fasta" FASTA #SNN140507
+      "$SCRIPT_DIR/extractAlltoFast.sh" "$basef.NT.snap.unmatched.fulllength.sorted.cropped.uniq.fasta" FASTA "$basef.NT.snap.unmatched.fulllength.fasta" FASTA "$basef.NT.snap.unmatched.uniq.fl.fasta" FASTA #SNN140507
     fi
     log "Done uniquing full length sequences of unmatched to NT"
   fi
@@ -960,8 +978,11 @@ then
   START_deNovo=$(date +%s)
   log "Adding matched viruses to NT unmatched"
   sed "n;n;n;d" "$basef.NT.snap.matched.fl.Viruses.fastq" | sed "n;n;d" | sed "s/^@/>/g" | sed 's/>/>Vir/g' > "$basef.NT.snap.matched.fl.Viruses.fasta"
-  gt sequniq -seqit -force -o "$basef.NT.snap.matched.fl.Viruses.uniq.fasta" "$basef.NT.snap.matched.fl.Viruses.fasta"
-  cat "$basef.NT.snap.unmatched.uniq.fl.fasta" "$basef.NT.snap.matched.fl.Viruses.uniq.fasta" > "$basef.NT.snap.unmatched_addVir_uniq.fasta"
+  cat "$basef.NT.snap.unmatched.uniq.fl.fasta" > "$basef.NT.snap.unmatched_addVir_uniq.fasta"
+  if [[ -s "$basef.NT.snap.matched.fl.Viruses.fasta" ]]; then
+    gt sequniq -seqit -force -o "$basef.NT.snap.matched.fl.Viruses.uniq.fasta" "$basef.NT.snap.matched.fl.Viruses.fasta"
+    cat "$basef.NT.snap.matched.fl.Viruses.uniq.fasta" >> "$basef.NT.snap.unmatched_addVir_uniq.fasta"
+  fi
   abyss_output_file="all.$basef.NT.snap.unmatched_addVir_uniq.fasta.unitigs.cut${length}.${contigcutoff}-mini.fa"
   if [ -f "$abyss_output_file" ]
   then
@@ -969,7 +990,7 @@ then
   else
       log "Starting deNovo assembly"
       log "Parameters: abyss_minimus.sh $basef.NT.snap.unmatched_addVir_uniq.fasta $length $contigcutoff $cores $abysskmer $ignore_barcodes_for_de_novo"
-      abyss_minimus.sh "$basef.NT.snap.unmatched_addVir_uniq.fasta" "$length" "$contigcutoff" "$cores" "$abysskmer" "$ignore_barcodes_for_de_novo" | sed "s/^/* /"
+      "$SCRIPT_DIR/abyss_minimus.sh" "$basef.NT.snap.unmatched_addVir_uniq.fasta" "$length" "$contigcutoff" "$cores" "$abysskmer" "$ignore_barcodes_for_de_novo" | sed "s/^/* /"
       log "Completed deNovo assembly: generated $abyss_output_file"
       END_deNovo=$(date +%s)
       diff_deNovo=$(( END_deNovo - START_deNovo ))
@@ -986,36 +1007,35 @@ then
     then
       log "############# RAPSearch to ${RAPSearch_VIRUS_db} ON NT-UNMATCHED SEQUENCES #################"
       log "Starting: RAPSearch $basef.NT.snap.unmatched.uniq.fl.fasta "
-      START14=$(date +%s)
       rapsearch_output_file="$basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}"
       if [ -f "$rapsearch_output_file.m8" ]
       then
         log "Using cached rapsearch result: $rapsearch_output_file"
       else
+        START14=$(date +%s)
         log "Parameters: rapsearch -q $basef.NT.snap.unmatched.uniq.fl.fasta -d $RAPSearch_VIRUS_db -o "$rapsearch_output_file" -z $cores -e $ecutoff_Vir -v 1 -b 1 -t N >& $basef.$rapsearch_database.RAPSearch.log"
-        rapsearch -q "$basef.NT.snap.unmatched.uniq.fl.fasta" -d $RAPSearch_VIRUS_db -o "$rapsearch_output_file" -z "$cores" -e "$ecutoff_Vir" -v 1 -b 1 -t N >& $basef.$rapsearch_database.RAPSearch.log
+        rapsearch -q "$basef.NT.snap.unmatched.uniq.fl.fasta" -d $RAPSearch_VIRUS_db -o "$rapsearch_output_file" -z "$cores" -e "$ecutoff_Vir" -v 1 -b 1 -t N# >& $basef.$rapsearch_database.RAPSearch.log
         log "Done RAPSearch"
+        END14=$(date +%s)
+        diff=$(( END14 - START14 ))
+        log "RAPSearch to Vir Took $diff seconds"
       fi
-      END14=$(date +%s)
-      diff=$(( END14 - START14 ))
-      log "RAPSearch to Vir Took $diff seconds"
       log "Starting: add FASTA sequences to RAPSearch m8 output file "
       START15=$(date +%s)
       sed -i '/^#/d' $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8
       seqtk subseq $basef.NT.snap.unmatched.uniq.fl.fasta $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8 > $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta
-
       sed '/>/d' $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta >  $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta.seq
       paste $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8 $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta.seq > $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.addseq.m8
-      log "Parameters: taxonomy_lookup.pl $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.addseq.m8 blast prot $cores $taxonomy_db_directory"
-      taxonomy_lookup.pl $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.addseq.m8 blast prot $cores $taxonomy_db_directory
+      log "Parameters: taxonomy_lookup.pl $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.addseq.m8 blast prot $cores $taxonomy_db_directory $ID_TYPE"
+      "$SCRIPT_DIR/taxonomy_lookup.pl" $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.addseq.m8 blast prot $cores $taxonomy_db_directory $ID_TYPE
       mv $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.addseq.all.annotated $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated
-      log "Parameters: table_generator.sh $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated RAP N Y N N"
-      table_generator.sh $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated RAP N Y N N
+      log "Parameters: table_generator.sh $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated RAP N Y N N $BARCODES"
+      "$SCRIPT_DIR/table_generator.sh" $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated RAP N Y N N $BARCODES
       log "Done: converting RAPSearch Vir output to fasta"
       END15=$(date +%s)
       diff=$(( END15 - START15 ))
       log "Converting RAPSearch Vir output to fasta sequences took $diff seconds." | tee -a timing.$basef.log
-      cat "$basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta" "all.$basef.NT.snap.unmatched_addVir_uniq.fasta.unitigs.cut${length}.${contigcutoff}-mini.fa" > "$basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta"
+      cat "$basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta" "all.$basef.NT.snap.unmatched_addVir_uniq.fasta.unitigs.cut${length}.${contigcutoff}-mini.fa" > "$basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta" || true
     else
       log "Cannot run viral RAPSearch - necessary input file ($basef.$rapsearch_database.RAPSearch.e$ecutoff_Vir.m8) does not exist"
       log "concatenating RAPSearchvirus output and Contigs"
@@ -1023,22 +1043,22 @@ then
     log "############# Cleanup RAPSearch Vir by RAPSearch to NR #################"
     if [ -f $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta ]
     then
-      log "Starting: RAPSearch to $RAPSearch_NR_db of $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta :"
-      START16=$(date +%s)
       rapsearch_output_file="$basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}"
       if [ -f "$rapsearch_output_file.m8" ]
       then
         log "Using cached rapsearch result: $rapsearch_output_file"
       else
-        log "Parameters: rapsearch -q $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta -d $RAPSearch_NR_db -o "$rapsearch_output_file" -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a T"
-        rapsearch -q $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta -d $RAPSearch_NR_db -o "$rapsearch_output_file" -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a T
-        log "rapsearch to nr done"
+          log "Starting: RAPSearch to $RAPSearch_NR_db of $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta :"
+          START16=$(date +%s)
+          log "Parameters: rapsearch -q $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta -d $RAPSearch_NR_db -o "$rapsearch_output_file" -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a T"
+          rapsearch -q $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta -d $RAPSearch_NR_db -o "$rapsearch_output_file" -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a T
+          log "rapsearch to nr done"
+          END16=$(date +%s)
+          diff=$(( END16 - START16 ))
+          log "RAPSearch to NR took $diff seconds." | tee -a timing.$basef.log
       fi
       sed -i '/^#/d' $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.m8
       log "removed extra #"
-      END16=$(date +%s)
-      diff=$(( END16 - START16 ))
-      log "RAPSearch to NR took $diff seconds." | tee -a timing.$basef.log
       log "Starting: Seq retrieval and Taxonomy $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}"
       START17=$(date +%s)
       seqtk subseq $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.m8.fasta \
@@ -1054,27 +1074,27 @@ then
           $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.addseq.m8
       log "made addseq file"
       log "############# RAPSearch Taxonomy"
-      log "Parameters: taxonomy_lookup.pl $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.addseq.m8 blast prot $cores $taxonomy_db_directory"
-      taxonomy_lookup.pl $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.addseq.m8 blast prot $cores $taxonomy_db_directory
+      log "Parameters: taxonomy_lookup.pl $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.addseq.m8 blast prot $cores $taxonomy_db_directory $ID_TYPE"
+      "$SCRIPT_DIR/taxonomy_lookup.pl" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.addseq.m8 blast prot $cores $taxonomy_db_directory $ID_TYPE
       cp $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.addseq.all.annotated $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated
       log "retrieved taxonomy"
-      grep "Viruses" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated
-      egrep "^contig" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated > $basef.Contigs.NR.RAPSearch.e${ecutoff_NR}.annotated
+      grep "Viruses" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated || true
+      egrep "^contig" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated > $basef.Contigs.NR.RAPSearch.e${ecutoff_NR}.annotated || true
       log "extracted RAPSearch taxonomy"
       log "Starting Readcount table"
-      log "Parameters: table_generator.sh $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated RAP Y Y Y Y"
-      table_generator.sh $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated RAP Y Y Y Y
-      log "Parameters: table_generator.sh $basef.Contigs.NR.RAPSearch.e${ecutoff_NR}.annotated RAP Y Y Y Y"
-      table_generator.sh $basef.Contigs.NR.RAPSearch.e${ecutoff_NR}.annotated RAP Y Y Y Y
+      log "Parameters: table_generator.sh $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated RAP $GI_TABLE Y Y Y $BARCODES"
+      "$SCRIPT_DIR/table_generator.sh" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated RAP $GI_TABLE Y Y Y $BARCODES
+      log "Parameters: table_generator.sh $basef.Contigs.NR.RAPSearch.e${ecutoff_NR}.annotated RAP $GI_TABLE Y Y Y $BARCODES"
+      "$SCRIPT_DIR/table_generator.sh" $basef.Contigs.NR.RAPSearch.e${ecutoff_NR}.annotated RAP $GI_TABLE Y Y Y $BARCODES
       #allow contigs to be incorporated into coverage maps by making contig barcodes the same as non-contig barcodes (removing the @)
       sed 's/@//g' $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated.bar.inc
       log "making coverage maps"
-      # coverage_generator_bp.sh (divides each fasta file into $cores cores then runs BLASTn using one core each.
+      # coverage_generator_bp.sh
       log "Parameters: coverage_generator_bp.sh $basef.NT.snap.matched.fl.Viruses.annotated $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated.bar.inc $eBLASTn $cores 10 1 $basef"
-      coverage_generator_bp.sh $basef.NT.snap.matched.fl.Viruses.annotated $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated.bar.inc $eBLASTn $cores 10 1 $basef
+      "$SCRIPT_DIR/coverage_generator_bp.sh" $basef.NT.snap.matched.fl.Viruses.annotated $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated.bar.inc $eBLASTn $cores 10 1 $basef
 
-      awk '{print$1}'  $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated > $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.header
-      awk '{print$1}' $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated.header
+      awk '{print $1}'  $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated > $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.header
+      awk '{print $1}' $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated.header
       # find headers in viral rapsearch that are no longer found in rapsearch to nr
       sort $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.header \
           $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated.header | \
@@ -1084,14 +1104,14 @@ then
 
       rm -r $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.header $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.annotated
       split -l 400 -a 6 $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.not.in.NR.header $basef.not.in.NR.
-      for f in $basef.not.in.NR.[a-z][a-z][a-z][a-z][a-z][a-z]
-      do grep -f "$f" $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated > $f.annotated
+      for f in $(find . -regextype posix-extended -regex "$basef"'.not.in.NR.[a-z]{6}')
+        do grep -f "$f" $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated > $f.annotated
       done
-      cat $basef.not.in.NR.[a-z][a-z][a-z][a-z][a-z][a-z].annotated > $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.not.in.NR.annotated
-      rm -r $basef.not.in.NR.[a-z][a-z][a-z][a-z][a-z][a-z]
-      rm -r $basef.not.in.NR.[a-z][a-z][a-z][a-z][a-z][a-z].annotated
-      log "Parameters: table_generator.sh $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.not.in.NR.annotated RAP N Y N N"
-      table_generator.sh $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.not.in.NR.annotated RAP N Y N N
+      find . -regextype posix-extended -regex "$basef"'.not.in.NR.[a-z]{6}' | xargs cat > $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.not.in.NR.annotated
+      find . -regextype posix-extended -regex "$basef"'.not.in.NR.[a-z]{6}' | xargs rm -rf
+      find . -regextype posix-extended -regex "$basef"'.not.in.NR.[a-z]{6}.annotated' | xargs rm -rf
+      log "Parameters: table_generator.sh $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.not.in.NR.annotated RAP N Y N N $BARCODES"
+      "$SCRIPT_DIR/table_generator.sh" $basef.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.annotated.not.in.NR.annotated RAP N Y N N $BARCODES
 
       END17=$(date +%s)
       diff=$(( END17 - START17 ))
@@ -1108,16 +1128,25 @@ then
     if [ -f $basef.Contigs.NT.snap.unmatched.uniq.fl.fasta ]
     then
       log "############# RAPSearch to NR #################"
+      rapsearch_output_file="$basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}"
+      if [ -f "$rapsearch_output_file.m8" ]
+      then
+        log "Using cached rapsearch result: $rapsearch_output_file"
+      else
+
       log "Starting: RAPSearch to NR $basef.Contigs.NT.snap.unmatched.uniq.fl.fasta"
       START16=$(date +%s)
-      log "Parameters:rapsearch -q $basef.Contigs.NT.snap.unmatched.uniq.fl.fasta -d $RAPSearch_NR_db -o $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR} -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a $RAPSearch_NR_fast_mode"
-      rapsearch -q "$basef.Contigs.NT.snap.unmatched.uniq.fl.fasta" -d "$RAPSearch_NR_db" -o "$basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}" -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a $RAPSearch_NR_fast_mode
+      log "Parameters:rapsearch -q $basef.Contigs.NT.snap.unmatched.uniq.fl.fasta -d $RAPSearch_NR_db -o $rapsearch_output_file -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a $RAPSearch_NR_fast_mode"
+      rapsearch -q "$basef.Contigs.NT.snap.unmatched.uniq.fl.fasta" -d "$RAPSearch_NR_db" -o "$rapsearch_output_file" -z $cores -e $ecutoff_NR -v 1 -b 1 -t N -a $RAPSearch_NR_fast_mode
       log "RAPSearch to NR done"
       sed -i '/^#/d' $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.m8
       log "removed extra #"
       END16=$(date +%s)
       diff=$(( END16 - START16 ))
       log "RAPSearch to NR took $diff seconds" | tee -a timing.$basef.log
+
+      fi
+
       log "Starting: Seq retrieval and Taxonomy $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}"
       START17=$(date +%s)
       seqtk subseq $basef.Contigs.NT.snap.unmatched.uniq.fl.fasta $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.m8 > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.m8.fasta
@@ -1134,22 +1163,22 @@ then
       log "made addseq file"
       log "############# RAPSearch Taxonomy"
       log "Parameters: taxonomy_lookup.pl $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.addseq.m8 blast prot $cores $taxonomy_db_directory"
-      taxonomy_lookup.pl $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.addseq.m8 blast prot $cores $taxonomy_db_directory
+      "$SCRIPT_DIR/taxonomy_lookup.pl" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.addseq.m8 blast prot $cores $taxonomy_db_directory $ID_TYPE
       cp $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.addseq.all.annotated $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated
       log "retrieved taxonomy"
-      grep "Viruses" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated
-      egrep "^contig" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated > $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated
+      grep "Viruses" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated 2> /dev/null > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated || true
+      egrep "^contig" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated 2> /dev/null > $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated || true
       log "extracted RAPSearch taxonomy"
       log "Starting Readcount table"
-      log "Parameters: table_generator.sh $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated RAP Y Y Y Y"
-      table_generator.sh $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated RAP Y Y Y Y
-      grep -v Viruses $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated > $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.noVir.annotated
-      log "Parameters: table_generator.sh $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.noVir.annotated RAP N Y N N"
-      table_generator.sh $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.noVir.annotated RAP N Y N N
+      log "Parameters: table_generator.sh $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated RAP $GI_TABLE Y Y Y $BARCODES"
+      "$SCRIPT_DIR/table_generator.sh" $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated RAP $GI_TABLE Y Y Y $BARCODES
+      grep -v Viruses $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.annotated 2> /dev/null > $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.noVir.annotated || true
+      log "Parameters: table_generator.sh $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.noVir.annotated RAP N Y N N $BARCODES"
+      "$SCRIPT_DIR/table_generator.sh" $basef.Contigs.$rapsearch_database.RAPSearch.e${ecutoff_NR}.noVir.annotated RAP N Y N N $BARCODES
       sed 's/@//g' $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated > $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated.bar.inc
       log "making coverage maps"
       log "Parameters: coverage_generator_bp.sh $basef.NT.snap.matched.fl.Viruses.annotated $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated.bar.inc $eBLASTn 10 10 1 $basef"
-      coverage_generator_bp.sh $basef.NT.snap.matched.fl.Viruses.annotated $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated.bar.inc $eBLASTn 10 10 1 $basef
+      "$SCRIPT_DIR/coverage_generator_bp.sh" $basef.NT.snap.matched.fl.Viruses.annotated $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_NR}.Viruses.annotated.bar.inc $eBLASTn 10 10 1 $basef
       END17=$(date +%s)
       diff=$(( END17 - START17 ))
       log "RAPSearch seq retrieval, taxonomy and table readcount and coverage took $diff seconds." | tee -a timing.$basef.log
@@ -1173,7 +1202,7 @@ then
   headerid=$(head -1 $basef.fastq | cut -c1-4 | sed 's/@//g')
   log "headerid_top $headerid_top = headerid_bottom $headerid_bottom and headerid = $headerid"
   log "Parameters: readcount.sh $basef $headerid Y $basef.fastq $basef.preprocessed.fastq $basef.preprocessed.s20.h250n25d12xfu.human.snap.unmatched.fastq $basef.NT.snap.matched.fulllength.all.annotated.sorted $basef.NT.snap.matched.fl.Viruses.annotated $basef.NT.snap.matched.fl.Bacteria.annotated $basef.NT.snap.matched.fl.nonChordatEuk.annotated $basef.NT.snap.unmatched.sam $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e${ecutoff_NR}.Viruses.annotated"
-  readcount.sh $basef $headerid Y $basef.fastq \
+  "$SCRIPT_DIR/readcount.sh" $basef $headerid $BARCODES $basef.fastq \
       $basef.preprocessed.fastq \
       $basef.preprocessed.s20.h250n25d12xfu.human.snap.unmatched.fastq \
       $basef.NT.snap.matched.fulllength.all.annotated.sorted \
@@ -1226,8 +1255,9 @@ then
   mkdir -p $denovo_folder
 fi
 
-exit 0
+# exit 0
 
+set +e
 #Move files to DATASETS
 
 mv $basef.cutadapt.fastq $dataset_folder
@@ -1238,7 +1268,7 @@ mv $basef.NT.snap.matched.fulllength.fastq $dataset_folder
 mv $basef.NT.snap.unmatched.fulllength.fastq $dataset_folder
 if [ -e $basef.NT.snap.unmatched.uniq.fl.fastq ]; then mv $basef.NT.snap.unmatched.uniq.fl.fastq $dataset_folder; fi
 mv $basef.NT.snap.unmatched.fulllength.fasta $dataset_folder
-mv $basef.NT.snap.matched.fl.Viruses.uniq.fasta $dataset_folder
+mv $basef.NT.snap.matched.fl.Viruses.uniq.fasta $dataset_folder 
 mv $basef.NT.snap.unmatched_addVir_uniq.fasta $dataset_folder
 mv genus.bar*$basef.plotting $dataset_folder
 mv $basef.Contigs.and.NTunmatched.$rapsearch_database.RAPSearch.e${ecutoff_Vir}.NR.e[0-9].m8 $dataset_folder
